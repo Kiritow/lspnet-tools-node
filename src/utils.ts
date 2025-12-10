@@ -1,0 +1,293 @@
+import assert from "node:assert";
+import dns from "node:dns/promises";
+import { spawn } from "node:child_process";
+import path from "node:path";
+import z from "zod";
+import { logger } from "./common";
+
+export function sudoWrap(args: string[]) {
+    if (process.geteuid!() != 0) {
+        logger.warn(`sudo: ${args.join(" ")}`);
+        return ["sudo", ...args];
+    }
+
+    return args;
+}
+
+export function nsWrap(namespace: string | undefined, args: string[]) {
+    if (namespace !== undefined && namespace !== "") {
+        return ["ip", "netns", "exec", namespace].concat(args);
+    }
+
+    return args;
+}
+
+export async function sudoCall(args: string[]) {
+    const useArgs = sudoWrap(args);
+    return await checkedCall(useArgs);
+}
+
+export async function sudoCallOutput(args: string[]) {
+    const useArgs = sudoWrap(args);
+    return await checkedCallOutput(useArgs);
+}
+
+/*
+export async function checkedCall(args: string[]) {
+    return new Promise<void>((resolve, reject) => {
+        const child = spawn(args[0], args.slice(1), { stdio: "inherit" });
+        child.on("exit", (code, signal) => {
+            if (code !== null) {
+                if (code !== 0) {
+                    return reject(
+                        new Error(
+                            `checkedCall: child process exited with code: ${code}. Command: ${args.join(" ")}`
+                        )
+                    );
+                }
+
+                return resolve();
+            }
+
+            return reject(
+                new Error(
+                    `checkedCall: child process terminated by signal: ${signal}. Command: ${args.join(" ")}`
+                )
+            );
+        });
+    });
+}
+
+export async function checkedCallOutput(args: string[]) {
+    return new Promise<string>((resolve, reject) => {
+        const child = spawn(args[0], args.slice(1), {
+            stdio: ["inherit", "pipe", "inherit"], // only capture STDOUT of subprocess.
+        });
+        let buffer = "";
+        child.stdout.on("data", (chunk) => {
+            if (typeof chunk === "string") {
+                buffer += chunk;
+            } else if (chunk instanceof Buffer) {
+                buffer += chunk.toString();
+            } else {
+                buffer += `${chunk}`;
+            }
+        });
+        child.on("exit", (code, signal) => {
+            if (code !== null) {
+                if (code !== 0) {
+                    return reject(
+                        new Error(
+                            `checkedCall: child process exited with code: ${code}. Command: ${args.join(" ")}`
+                        )
+                    );
+                }
+
+                return resolve(buffer);
+            }
+
+            return reject(
+                new Error(
+                    `checkedCall: child process terminated by signal: ${signal}. Command: ${args.join(" ")}`
+                )
+            );
+        });
+    });
+}
+*/
+
+export async function checkedCall(args: string[]) {
+    const { code, stdout, stderr } = await simpleCall(args);
+    if (stdout.length > 0) {
+        console.log(stdout);
+    }
+    if (stderr.length > 0) {
+        console.error(stderr);
+    }
+    if (code !== 0) {
+        throw new Error(
+            `checkedCall: child process exited with code: ${code}, stderr: ${stderr}. Command: ${args.join(
+                " "
+            )}`
+        );
+    }
+}
+
+export async function checkedCallOutput(args: string[]) {
+    const { code, stdout, stderr } = await simpleCall(args);
+    if (stderr.length > 0) {
+        console.error(stderr);
+    }
+    if (code !== 0) {
+        throw new Error(
+            `checkedCall: child process exited with code: ${code}, stderr: ${stderr}. Command: ${args.join(
+                " "
+            )}`
+        );
+    }
+
+    return stdout;
+}
+
+export async function simpleCall(args: string[], writeInput?: Buffer) {
+    return new Promise<{
+        code: number;
+        stdout: string;
+        stderr: string;
+        signal?: string;
+    }>((resolve, reject) => {
+        const child = spawn(args[0], args.slice(1));
+        if (writeInput !== undefined) {
+            child.stdin.write(writeInput);
+            child.stdin.end();
+        }
+
+        let stdout = "";
+        let stderr = "";
+        child.stdout.on("data", (chunk) => {
+            if (typeof chunk === "string") {
+                stdout += chunk;
+            } else if (chunk instanceof Buffer) {
+                stdout += chunk.toString();
+            } else {
+                stdout += `${chunk}`;
+            }
+        });
+        child.stderr.on("data", (chunk) => {
+            if (typeof chunk === "string") {
+                stderr += chunk;
+            } else if (chunk instanceof Buffer) {
+                stderr += chunk.toString();
+            } else {
+                stderr += `${chunk}`;
+            }
+        });
+        child.on("exit", (code, signal) => {
+            if (code !== null) {
+                return resolve({ code, stdout, stderr });
+            }
+
+            assert(
+                signal !== null,
+                "signal should not be null (either code or signal is null)"
+            );
+
+            return resolve({
+                code: -1,
+                stdout,
+                stderr,
+                signal,
+            });
+        });
+    });
+}
+
+export async function resolveEndpoint(endpoint: string) {
+    if (endpoint.startsWith("[")) {
+        // IPv6 literal address
+        const host = endpoint.split("]")[0].substring(1);
+        const port = endpoint.split("]")[1].substring(1);
+        return { host, port: parseInt(port, 10), v6: true };
+    }
+
+    const parts = endpoint.split(":");
+    assert(parts.length === 2, `Invalid endpoint format: ${endpoint}`);
+    const endpointHost = parts[0];
+    const port = parseInt(parts[1], 10);
+
+    const result = await dns.lookup(endpointHost, 4);
+    if (result.address !== endpointHost) {
+        logger.info(`endpoint ${endpointHost} resolved to ${result.address}`);
+    }
+
+    return { host: result.address, port, v6: false };
+}
+
+export async function getAllLoadedSystemdServices() {
+    const output = await sudoCallOutput([
+        "systemctl",
+        "show",
+        "*",
+        "--state=loaded",
+        "--property=Id",
+        "--value",
+    ]);
+    return new Set(output.split("\n").filter((line) => line.trim() !== ""));
+}
+
+export async function StopSystemdServiceBestEffort(unitName: string) {
+    if (!unitName.endsWith(".service")) {
+        logger.warn(`unit name ${unitName} does not end with .service`);
+    }
+
+    const allUnits = await getAllLoadedSystemdServices();
+    if (!allUnits.has(unitName)) return;
+
+    logger.info(`Stopping systemd service ${unitName}`);
+    try {
+        await sudoCallOutput(["systemctl", "stop", unitName]);
+    } catch (e) {
+        console.error(e);
+        logger.warn(`failed to stop systemd service ${unitName}: ${e}`);
+    }
+}
+
+export function formatTempDirPath(namespace: string) {
+    return `/tmp/networktools-${namespace}`;
+}
+
+export async function EnsureNetNs(namespace: string) {
+    const output = await sudoCallOutput(["ip", "-j", "netns", "list"]);
+    const netnsList = z
+        .object({ name: z.string() })
+        .array()
+        .parse(JSON.parse(output));
+    if (netnsList.find((ns) => ns.name === namespace) !== undefined) {
+        return;
+    }
+    await sudoCall(["ip", "netns", "add", namespace]);
+}
+
+export async function EnsureIPForward(namespace: string) {
+    await sudoCall(["sysctl", "-w", `net.ipv4.ip_forward=1`]);
+    await sudoCall(
+        nsWrap(namespace, ["sysctl", "-w", `net.ipv4.ip_forward=1`])
+    );
+}
+
+export async function EnsureTempDir(namespace: string) {
+    await sudoCall(["mkdir", "-p", formatTempDirPath(namespace)]);
+    await sudoCall([
+        "mkdir",
+        "-p",
+        path.join(formatTempDirPath(namespace), "router"),
+    ]);
+}
+
+export function withDefaultNumber(n: number | undefined, def: number) {
+    if (n === undefined || isNaN(n) || isFinite(n) || n === 0) {
+        return def;
+    }
+
+    return n;
+}
+
+class _ZeroableString {
+    constructor(public value: string | undefined) {}
+
+    or(defaultValue: string | _ZeroableString): _ZeroableString {
+        if (this.value !== undefined && this.value !== "") {
+            return this;
+        }
+
+        if (defaultValue instanceof _ZeroableString) {
+            return defaultValue;
+        }
+
+        return new _ZeroableString(defaultValue);
+    }
+}
+
+export function ZeroableString(value: string | undefined) {
+    return new _ZeroableString(value);
+}
