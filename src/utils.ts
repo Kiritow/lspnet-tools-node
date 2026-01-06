@@ -175,7 +175,7 @@ export function formatUnitname(namespace: string, type: string) {
 }
 
 export function withDefaultNumber(n: number | undefined, def: number) {
-    if (n === undefined || isNaN(n) || !isFinite(n) || n === 0) {
+    if (n === undefined || Number.isNaN(n) || !Number.isFinite(n) || n === 0) {
         return def;
     }
 

@@ -50,10 +50,10 @@ import {
     StartGostTLSRelayServer,
 } from "./external-tools";
 import { GetInstallDir } from "./config";
-import { CalculateMultiplePings } from "ping";
-import { BFDConfig, CommonOSPFConfig, formatBirdConfig } from "bird";
-import { inspectRouterContainer } from "podman";
-import { GetRouterOSPFState, RouterInfo } from "bird-ospf";
+import { CalculateMultiplePings, PingRunner } from "./ping";
+import { BFDConfig, CommonOSPFConfig, formatBirdConfig } from "./bird";
+import { inspectRouterContainer } from "./podman";
+import { GetRouterOSPFState, RouterInfo } from "./bird-ospf";
 
 async function tryPatchMTU(namespace: string) {
     const { code, stderr } = await simpleCall(
@@ -145,10 +145,15 @@ function routerInfoToNodeRouterInfo(routerInfo: RouterInfo): NodeRouterInfo {
 }
 
 export class ControlAgent {
-    constructor(
-        private store: ConfigStore,
-        private client: NodeManagerClient
-    ) {}
+    private store: ConfigStore;
+    private client: NodeManagerClient;
+    private pingRunnerMap: Map<string, { runner: PingRunner; pings: number[] }>;
+
+    constructor(store: ConfigStore, client: NodeManagerClient) {
+        this.store = store;
+        this.client = client;
+        this.pingRunnerMap = new Map();
+    }
 
     async doSyncWireGuardKeys(atLeast: number): Promise<void> {
         const keys = await this.store.getAllWireGuardKeys();
@@ -798,7 +803,7 @@ export class ControlAgent {
         );
     }
 
-    async doSync() {
+    async doSyncOnce() {
         const nodeSettings = await this.store.getNodeSettings();
         assert(nodeSettings !== undefined, "Node settings not configured");
         await EnsureNetNs(nodeSettings.namespace);

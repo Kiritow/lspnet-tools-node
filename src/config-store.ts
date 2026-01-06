@@ -6,7 +6,7 @@ const _nodeSettingsSchema = z.object({
     namespace: z.string(),
     ethName: z.string(),
     privateKey: z.string(),
-    nodeId: z.string(),
+    nodeId: z.coerce.number(),
     domainPrefix: z.string(),
 });
 export type NodeSettings = z.infer<typeof _nodeSettingsSchema>;
@@ -33,7 +33,12 @@ const _localUnderlayStateSchema = z.union([
 export type LocalUnderlayState = z.infer<typeof _localUnderlayStateSchema>;
 
 export class ConfigStore extends BaseSQLite {
-    constructor(filename: string) {
+    constructor(filename: string, disableLogger?: boolean) {
+        if (disableLogger) {
+            super(filename);
+            return;
+        }
+
         const logger = getOrCreateLogger("db", {
             level: "debug",
         });
@@ -66,6 +71,20 @@ export class ConfigStore extends BaseSQLite {
         );
     }
 
+    async getPartialNodeSettings() {
+        const results = await this.query("select key, value from nodeconfig");
+        if (results.length < 1) {
+            return undefined;
+        }
+        const kvs = z
+            .object({ key: z.string(), value: z.unknown() })
+            .array()
+            .parse(results);
+        return _nodeSettingsSchema
+            .partial()
+            .parse(Object.fromEntries(kvs.map((kv) => [kv.key, kv.value])));
+    }
+
     async setNodeSettings(updates: Partial<NodeSettings>) {
         const kvs = Object.entries(updates)
             .map(([key, value]) => ({
@@ -95,7 +114,8 @@ export class ConfigStore extends BaseSQLite {
             .parse(results);
     }
 
-    private async getKV(key: string) {
+    // Custom simple KV store with optional TTL
+    private async _getKey(key: string) {
         const results = await this.query(
             "select value, expires from simplekv where key=?",
             [key]
@@ -115,7 +135,7 @@ export class ConfigStore extends BaseSQLite {
         return value;
     }
 
-    private async setKV(key: string, value: unknown, ttlSeconds?: number) {
+    private async _setKey(key: string, value: unknown, ttlSeconds?: number) {
         const useTTL =
             ttlSeconds !== undefined
                 ? Math.floor((Date.now() + ttlSeconds * 1000) / 1000)
@@ -126,12 +146,12 @@ export class ConfigStore extends BaseSQLite {
         ]);
     }
 
-    private async deleteKV(key: string) {
+    private async _deleteKey(key: string) {
         await this.run("delete from simplekv where key=?", [key]);
     }
 
     async getLocalUnderlayState(ifname: string) {
-        const v = await this.getKV(`underlay-worker-${ifname}`);
+        const v = await this._getKey(`underlay-worker-${ifname}`);
         if (v === undefined) {
             return undefined;
         }
@@ -140,10 +160,10 @@ export class ConfigStore extends BaseSQLite {
     }
 
     async deleteLocalUnderlayState(ifname: string) {
-        await this.deleteKV(`underlay-worker-${ifname}`);
+        await this._deleteKey(`underlay-worker-${ifname}`);
     }
 
     async setLocalUnderlayState(ifname: string, state: LocalUnderlayState) {
-        await this.setKV(`underlay-worker-${ifname}`, JSON.stringify(state));
+        await this._setKey(`underlay-worker-${ifname}`, JSON.stringify(state));
     }
 }

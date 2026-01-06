@@ -258,3 +258,47 @@ export class NodeManagerClient {
         });
     }
 }
+
+export async function JoinCluster(
+    privateKeyPEM: string,
+    domainPrefix: string,
+    token: string,
+    nodeName?: string
+) {
+    const key = new PrivateKeyWrapper(privateKeyPEM);
+    let useDomainPrefix = domainPrefix;
+    if (
+        !useDomainPrefix.startsWith("http://") &&
+        !useDomainPrefix.startsWith("https://")
+    ) {
+        useDomainPrefix = `https://${useDomainPrefix}`;
+    }
+    if (!useDomainPrefix.startsWith("https")) {
+        console.warn("Warning: Joining cluster over non-HTTPS connection");
+    }
+
+    const res = await axios.post(
+        `${useDomainPrefix}/api/v1/node/join`,
+        {
+            token,
+            name: nodeName ?? crypto.randomUUID(),
+            publicSignKey: key.getPublicKeyPEM(),
+        },
+        {
+            validateStatus: () => true, // do not throw on non-200 status
+        }
+    );
+    if (res.status !== 200) {
+        throw new Error(
+            `Failed to join cluster: ${res.status} ${res.statusText}`
+        );
+    }
+
+    const { id: nodeId } = z
+        .object({
+            id: z.number(),
+        })
+        .parse(res.data);
+
+    return nodeId;
+}

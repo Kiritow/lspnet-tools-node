@@ -88,6 +88,13 @@ export class PingRunner {
             }
         });
 
+        child.on("exit", (code, signal) => {
+            console.info(
+                `Ping process (for ${this.targetIP}) exited with code ${code}, signal ${signal}`
+            );
+            this.child = undefined;
+        });
+
         this.child = child;
     }
 
