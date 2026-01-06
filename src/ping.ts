@@ -1,5 +1,8 @@
 import { ChildProcess, spawn } from "node:child_process";
+import assert from "node:assert";
 import { nsWrap } from "./utils";
+import { GetInterfaceState } from "./device";
+import { GetAllAddressFromLinkNetworkCIDR } from "./shared-utils";
 
 export class PingRunner {
     private child: ChildProcess | undefined;
@@ -91,7 +94,88 @@ export class PingRunner {
     stop() {
         if (this.child === undefined) return;
 
-        this.child.kill();
+        if (!this.child.kill()) {
+            console.error(`Failed to kill ping process: ${this.child.pid}`);
+        }
+
         this.child = undefined;
     }
+}
+
+function TrimmedMean(numbers: number[]) {
+    if (numbers.length < 1) return undefined;
+    const sorted = [...numbers].sort((a, b) => a - b);
+    const trimCount = Math.floor(sorted.length * 0.1);
+    const trimmed = sorted.slice(trimCount, sorted.length - trimCount);
+    if (trimmed.length < 1) {
+        const sum = sorted.reduce((a, b) => a + b, 0);
+        return sum / sorted.length;
+    }
+
+    const sum = trimmed.reduce((a, b) => a + b, 0);
+    return sum / trimmed.length;
+}
+
+export async function CalculateMultiplePings(
+    namespace: string,
+    ifnames: string[]
+) {
+    if (ifnames.length === 0) {
+        return new Map<string, number | undefined>();
+    }
+
+    const runners = await Promise.all(
+        ifnames.map(async (ifname) => {
+            try {
+                const interfaceState = await GetInterfaceState(
+                    namespace,
+                    ifname
+                );
+                assert(
+                    interfaceState.address !== undefined,
+                    `interface ${ifname} has no address`
+                );
+                const allIPs = GetAllAddressFromLinkNetworkCIDR(
+                    interfaceState.address
+                );
+                const otherEndIP = allIPs.find(
+                    (ip) => ip !== interfaceState.address
+                );
+                assert(
+                    otherEndIP !== undefined,
+                    `cannot find other end IP for ${ifname}`
+                );
+                const results: number[] = [];
+                const runner = new PingRunner(
+                    namespace,
+                    otherEndIP,
+                    (t, pingMs) => {
+                        results.push(pingMs);
+                    },
+                    1,
+                    true
+                );
+                runner.start();
+                return { ifname, runner, results };
+            } catch (e) {
+                console.error(
+                    `failed to start ping for ${ifname}: ${e instanceof Error ? e.message : e}`
+                );
+                return { ifname, runner: undefined, results: [] };
+            }
+        })
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 10000));
+
+    for (const info of runners) {
+        info.runner?.stop();
+    }
+
+    return new Map(
+        runners.map((info) => {
+            const meanPingMs = TrimmedMean(info.results);
+            return [info.ifname, meanPingMs];
+        })
+    );
 }

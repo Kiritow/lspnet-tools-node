@@ -1,8 +1,8 @@
-import crypto from "crypto";
+import crypto from "node:crypto";
 import axios from "axios";
+import z from "zod";
 import { NodeSettings } from "./config-store";
 import { PrivateKeyWrapper } from "./pki";
-import { z } from "zod";
 
 export interface NodeRouterInfo {
     router_id: string;
@@ -249,7 +249,7 @@ export class NodeManagerClient {
     }
 
     async sendRouteTelemetry(
-        areaRoutes: Record<string, NodeRouterInfo>,
+        areaRoutes: Record<string, NodeRouterInfo[]>,
         otherASBRs: NodeRouterInfo[]
     ) {
         await this.post("/api/v1/node/route_telemetry", {

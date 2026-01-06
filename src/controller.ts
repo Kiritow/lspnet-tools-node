@@ -1,25 +1,30 @@
-import assert from "assert";
+import assert from "node:assert";
+import fsPromise from "node:fs/promises";
+import { Address4 } from "ip-address";
 import {
     NodeManagerClient,
+    NodeRouterInfo,
     RemoteNodeInfo,
-    RemotePeerExtra,
     RemotePeerInfo,
 } from "./nodemanager-client";
 import { ConfigStore, LocalUnderlayState, NodeSettings } from "./config-store";
 import {
     checkedCallOutput,
-    EnsureIPForward,
-    EnsureNetNs,
-    EnsureTempDir,
+    formatTempDirPath,
+    formatUnitname,
     nsWrap,
     resolveEndpoint,
     simpleCall,
     StopSystemdServiceBestEffort,
     sudoCall,
-    sudoCallOutput,
     withDefaultNumber,
-    ZeroableString,
 } from "./utils";
+import {
+    EnsureIPForward,
+    EnsureNetNs,
+    EnsureRouterContainer,
+    EnsureTempDir,
+} from "./ensures";
 import {
     EnsureIPTables,
     GetAllIPTablesRules,
@@ -33,12 +38,22 @@ import {
     CreateVethDevice,
     CreateWireGuardDevice,
     DumpAllWireGuardState,
+    DumpWireGuardState,
     GetInterfaceState,
     InterfaceState,
     tryDestroyDevice,
     UpWireGuardDevice,
+    WireGuardState,
 } from "./device";
-import { StartGostTLSRelayClient } from "external-tools";
+import {
+    StartGostTLSRelayClient,
+    StartGostTLSRelayServer,
+} from "./external-tools";
+import { GetInstallDir } from "./config";
+import { CalculateMultiplePings } from "ping";
+import { BFDConfig, CommonOSPFConfig, formatBirdConfig } from "bird";
+import { inspectRouterContainer } from "podman";
+import { GetRouterOSPFState, RouterInfo } from "bird-ospf";
 
 async function tryPatchMTU(namespace: string) {
     const { code, stderr } = await simpleCall(
@@ -92,6 +107,41 @@ async function generateNewWireGuardKeyPair() {
     );
     const publicKey = call2.stdout.trim();
     return { privateKey, publicKey };
+}
+
+function routerInfoToNodeRouterInfo(routerInfo: RouterInfo): NodeRouterInfo {
+    return {
+        router_id: routerInfo.routerId,
+        distance: routerInfo.distance,
+        vlinks: routerInfo.vlinks.map((vl) => ({
+            router_id: vl.routerId,
+            metric: vl.metric,
+        })),
+        routers: routerInfo.routers.map((r) => ({
+            router_id: r.routerId,
+            metric: r.metric,
+        })),
+        stubnets: routerInfo.stubnets,
+        xnetworks: routerInfo.xnetworks,
+        xrouters: routerInfo.xrouters.map((xr) => ({
+            router_id: xr.routerId,
+            metric: xr.metric,
+        })),
+        externals: routerInfo.externals.map((ex) => ({
+            network: ex.network,
+            metric: ex.metric,
+            metric_type: ex.metricType,
+            tag: ex.tag,
+            via: ex.via,
+        })),
+        nssa_externals: routerInfo.nssaExternals.map((nex) => ({
+            network: nex.network,
+            metric: nex.metric,
+            metric_type: nex.metricType,
+            tag: nex.tag,
+            via: nex.via,
+        })),
+    };
 }
 
 export class ControlAgent {
@@ -313,16 +363,62 @@ export class ControlAgent {
         assert(remoteUnderlay !== undefined, "remoteUnderlay is undefined");
         switch (remoteUnderlay.provider) {
             case "gost_relay_client": {
-                let serverIP = remoteUnderlay.config_gost_relay_client.server_addr;
+                const remoteGostClientConfig =
+                    remoteUnderlay.config_gost_relay_client;
+                let serverIP = remoteGostClientConfig.server_addr;
                 if (serverIP === undefined || serverIP === "") {
-                    serverIP = (await resolveEndpoint(remotePeer.endpoint)).host;
+                    serverIP = (await resolveEndpoint(remotePeer.endpoint))
+                        .host;
                 }
 
                 logger.info(
-                    `Starting gost relay client for interface ${ifname} to ${serverIP}:${remoteUnderlay.config_gost_relay_client.server_port}...`
+                    `Starting gost relay client for interface ${ifname} to ${serverIP}:${remoteGostClientConfig.server_port}...`
                 );
-                const unitName = `networktools-${nodeSettings.namespace}-worker-${crypto.randomUUID()}`;
-                await StartGostTLSRelayClient()
+                const unitName = formatUnitname(
+                    nodeSettings.namespace,
+                    "worker"
+                );
+                await StartGostTLSRelayClient(unitName, GetInstallDir(), {
+                    listenPort: remoteGostClientConfig.listen_port,
+                    dstHost: serverIP,
+                    dstPort: remoteGostClientConfig.server_port,
+                    udpTTL: 120,
+                });
+
+                await this.store.setLocalUnderlayState(ifname, {
+                    unit_name: unitName,
+                    mode: "client",
+                    listen_port: remoteGostClientConfig.listen_port,
+                    server_ip: serverIP,
+                    server_port: remoteGostClientConfig.server_port,
+                });
+                return;
+            }
+
+            case "gost_relay_server": {
+                const remoteGostServerConfig =
+                    remoteUnderlay.config_gost_relay_server;
+                const wgState = await DumpWireGuardState(
+                    nodeSettings.namespace,
+                    ifname
+                );
+                logger.info(
+                    `Starting gost relay server for interface ${ifname}, accepting on port ${remoteGostServerConfig.listen_port} to 127.0.0.1:${wgState.listen}...`
+                );
+                const unitName = formatUnitname(
+                    nodeSettings.namespace,
+                    "worker"
+                );
+                await StartGostTLSRelayServer(unitName, GetInstallDir(), {
+                    listenPort: remoteGostServerConfig.listen_port,
+                    targetPort: wgState.listen,
+                });
+                await this.store.setLocalUnderlayState(ifname, {
+                    unit_name: unitName,
+                    mode: "server",
+                    listen_port: remoteGostServerConfig.listen_port,
+                });
+                return;
             }
         }
     }
@@ -339,7 +435,94 @@ export class ControlAgent {
         }
 
         if (localUnderlayState === undefined && remoteUnderlay !== undefined) {
-            // need to create underlay worker
+            // no underlay -> has underlay
+            await this.doSyncCreateLocalUnderlay(nodeSettings, peer, ifname);
+            return;
+        }
+
+        if (localUnderlayState !== undefined && remoteUnderlay === undefined) {
+            // has underlay -> no underlay
+            await this.doSyncRemoveLocalUnderlay(ifname, localUnderlayState);
+            return;
+        }
+
+        assert(
+            localUnderlayState !== undefined,
+            "localUnderlayState is undefined (unlikely, bug)"
+        );
+        assert(
+            remoteUnderlay !== undefined,
+            "remoteUnderlay is undefined (unlikely, bug)"
+        );
+
+        // both have underlay, check configs
+        let needRecreate = false;
+        if (
+            localUnderlayState.mode === "client" &&
+            remoteUnderlay.provider === "gost_relay_client"
+        ) {
+            if (
+                localUnderlayState.listen_port !==
+                    remoteUnderlay.config_gost_relay_client.listen_port ||
+                localUnderlayState.server_ip !==
+                    remoteUnderlay.config_gost_relay_client.server_addr ||
+                localUnderlayState.server_port !==
+                    remoteUnderlay.config_gost_relay_client.server_port
+            ) {
+                // config changed
+                logger.info(
+                    `Underlay config changed for interface ${ifname}, need recreate. Local: ${JSON.stringify(localUnderlayState)} Remote: ${JSON.stringify(remoteUnderlay)}`
+                );
+                needRecreate = true;
+            }
+        } else if (
+            localUnderlayState.mode === "server" &&
+            remoteUnderlay.provider === "gost_relay_server"
+        ) {
+            if (
+                localUnderlayState.listen_port !==
+                remoteUnderlay.config_gost_relay_server.listen_port
+            ) {
+                // config changed
+                logger.info(
+                    `Underlay config changed for interface ${ifname}, need recreate. Local: ${JSON.stringify(localUnderlayState)} Remote: ${JSON.stringify(remoteUnderlay)}`
+                );
+                needRecreate = true;
+            }
+        } else {
+            // mode changed
+            logger.info(
+                `Underlay mode changed for interface ${ifname}, need recreate. Local: ${JSON.stringify(localUnderlayState)} Remote: ${JSON.stringify(remoteUnderlay)}`
+            );
+            needRecreate = true;
+        }
+
+        if (needRecreate) {
+            await this.doSyncRemoveLocalUnderlay(ifname, localUnderlayState);
+            await this.doSyncCreateLocalUnderlay(nodeSettings, peer, ifname);
+        }
+    }
+
+    async doSyncPeerEndpoint(
+        nodeSettings: NodeSettings,
+        peer: RemotePeerInfo,
+        ifname: string,
+        localState: WireGuardState
+    ) {
+        const peerPublicKey = Object.keys(localState.peers)[0];
+        const localPeerState = localState.peers[peerPublicKey];
+        if (localPeerState.keepalive !== peer.keepalive) {
+            await sudoCall(
+                nsWrap(nodeSettings.namespace, [
+                    "wg",
+                    "set",
+                    ifname,
+                    "peer",
+                    peerPublicKey,
+                    "persistent-keepalive",
+                    `${peer.keepalive}`,
+                ])
+            );
         }
     }
 
@@ -417,7 +600,14 @@ export class ControlAgent {
                 `WireGuard peer interface ${ifname} exists, checking...`
             );
             await this.doSyncPeerUnderlay(nodeSettings, peer);
-            if (peer.extra?.underlay !== undefined) {
+            if (peer.extra?.underlay === undefined) {
+                // underlay is synced now, and remote does not have underlay, try syncing endpoints.
+                await this.doSyncPeerEndpoint(
+                    nodeSettings,
+                    peer,
+                    ifname,
+                    localState
+                );
             }
         }
 
@@ -450,6 +640,164 @@ export class ControlAgent {
         }
     }
 
+    async doSyncBird(
+        nodeSettings: NodeSettings,
+        remoteConfig: RemoteNodeInfo,
+        remotePeers: RemotePeerInfo[]
+    ) {
+        // peers have been synced, so any peer in remotePeers now should be on this node
+        const localInterfaceCIDRs = remotePeers.map((p) => {
+            const addr = new Address4(p.addressCIDR).startAddress();
+            return `${addr.address}/${addr.subnet}`;
+        });
+        const costMap = new Map<string, number>();
+        const toPingInterfaces: string[] = [];
+        for (const peer of remotePeers) {
+            const ifname = `${nodeSettings.namespace}-${peer.id}`;
+            if (peer.extra?.ospf?.ping) {
+                toPingInterfaces.push(ifname);
+            }
+            costMap.set(ifname, peer.extra?.ospf?.cost ?? 500);
+        }
+        const pingResultMap = await CalculateMultiplePings(
+            nodeSettings.namespace,
+            toPingInterfaces
+        );
+        for (const [ifname, pingMs] of pingResultMap.entries()) {
+            if (pingMs !== undefined && costMap.has(ifname)) {
+                costMap.set(ifname, Math.min(1, Math.floor(pingMs)));
+            }
+        }
+
+        const ospfAreaConfig: Record<
+            string,
+            Record<string, CommonOSPFConfig>
+        > = {
+            "0": {},
+        };
+        const bfdConfig: Record<string, BFDConfig> = {};
+
+        for (const peer of remotePeers) {
+            const ifname = `${nodeSettings.namespace}-${peer.id}`;
+            ospfAreaConfig["0"][ifname] = {
+                area: 0,
+                cost: costMap.get(ifname) ?? 500,
+                type: "ptp",
+                // auth: ...
+            };
+            bfdConfig[ifname] = {
+                intervalMs: 1000,
+                // txMs
+                // rxMs
+                idleMs: 5000,
+                multiplier: 5,
+            };
+        }
+
+        // maybe have local networks?
+        if (
+            remoteConfig.vethCIDR !== undefined &&
+            remoteConfig.ospf !== undefined
+        ) {
+            const areaId = `${remoteConfig.ospf.area}`;
+            ospfAreaConfig[areaId] = {};
+            const vethName = `${nodeSettings.namespace}-veth1`;
+            ospfAreaConfig[areaId][vethName] = {
+                area: remoteConfig.ospf.area,
+                cost: remoteConfig.ospf.cost,
+                auth: remoteConfig.ospf.auth,
+                type: "ptp",
+            };
+        }
+
+        const birdConfig = formatBirdConfig({
+            directInterfaceNames: [],
+            ospfImportExcludeCIDRs: localInterfaceCIDRs,
+            ospfExportExcludeCIDRs: [],
+            ospfAreaConfig,
+            bfdConfig,
+        });
+
+        const tempFilePath = `/tmp/${crypto.randomUUID()}`;
+        await fsPromise.writeFile(tempFilePath, birdConfig);
+        console.info(`Temp bird config file created at: ${tempFilePath}`);
+        const targetFilePath = `${formatTempDirPath(nodeSettings.namespace)}/router/bird.conf`;
+        await sudoCall(["mv", tempFilePath, targetFilePath]);
+
+        const containerId = await EnsureRouterContainer(nodeSettings.namespace);
+        console.log(
+            `Reload bird config for namespace ${nodeSettings.namespace} in container ${containerId}...`
+        );
+        sudoCall(["podman", "exec", containerId, "birdc", "configure"]);
+        console.log(
+            `Bird config reloaded for namespace ${nodeSettings.namespace}`
+        );
+    }
+
+    async collectTelemetry(
+        nodeSettings: NodeSettings,
+        remotePeers: RemotePeerInfo[]
+    ) {
+        const localWGStates = await DumpAllWireGuardState(
+            nodeSettings.namespace
+        );
+        const filteredPeers = remotePeers
+            .map((peer) => {
+                const ifname = `${nodeSettings.namespace}-${peer.id}`;
+                const localState = localWGStates.get(ifname);
+                if (localState !== undefined) {
+                    return {
+                        id: peer.id,
+                        ifname,
+                        localState,
+                    };
+                }
+            })
+            .filter((p) => p !== undefined);
+
+        const pingResultMap = await CalculateMultiplePings(
+            nodeSettings.namespace,
+            filteredPeers.map((p) => p.ifname)
+        );
+
+        const telemetryLinks = filteredPeers.map((p) => {
+            const peerState = Object.values(p.localState.peers)[0];
+            return {
+                id: p.id,
+                ping: pingResultMap.get(p.ifname) ?? -1, // for compatibility with python version
+                rx: peerState.rx,
+                tx: peerState.tx,
+            };
+        });
+        await this.client.sendLinkTelemetry(telemetryLinks);
+
+        const containerStatus = await inspectRouterContainer(
+            nodeSettings.namespace
+        );
+        if (containerStatus === undefined) {
+            console.warn(
+                `router container for namespace ${nodeSettings.namespace} not found. Skipping OSPF telemetry`
+            );
+            return;
+        }
+
+        const { areaRouterMap, otherASBRs } = await GetRouterOSPFState(
+            containerStatus.Id
+        );
+        const telemetryAreaRouters = Object.fromEntries(
+            Array.from(areaRouterMap.entries()).map(([areaId, routers]) => {
+                const telemetryRouters = routers.map((r) =>
+                    routerInfoToNodeRouterInfo(r)
+                );
+                return [areaId, telemetryRouters];
+            })
+        );
+        await this.client.sendRouteTelemetry(
+            telemetryAreaRouters,
+            otherASBRs.map((r) => routerInfoToNodeRouterInfo(r))
+        );
+    }
+
     async doSync() {
         const nodeSettings = await this.store.getNodeSettings();
         assert(nodeSettings !== undefined, "Node settings not configured");
@@ -473,6 +821,12 @@ export class ControlAgent {
 
         await this.doSyncExitNode(nodeSettings, remoteConfig);
         await this.doSyncVeth(nodeSettings, remoteConfig);
-        await this.doSyncPeers(remotePeers);
+        await this.doSyncPeers(nodeSettings, remotePeers);
+        await this.doSyncBird(nodeSettings, remoteConfig, remotePeers);
+
+        // collect telemetry
+        await this.collectTelemetry(nodeSettings, remotePeers);
+
+        logger.info("Sync completed.");
     }
 }

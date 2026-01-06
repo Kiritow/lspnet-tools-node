@@ -1,5 +1,5 @@
-import crypto from "crypto";
-import assert from "assert";
+import crypto from "node:crypto";
+import assert from "node:assert";
 
 export class PrivateKeyWrapper {
     private keyObject: crypto.KeyObject;

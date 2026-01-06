@@ -1,8 +1,6 @@
 import assert from "node:assert";
-import dns from "node:dns/promises";
+import dnsPromise from "node:dns/promises";
 import { spawn } from "node:child_process";
-import path from "node:path";
-import z from "zod";
 import { logger } from "./common";
 
 export function sudoWrap(args: string[]) {
@@ -31,70 +29,6 @@ export async function sudoCallOutput(args: string[]) {
     const useArgs = sudoWrap(args);
     return await checkedCallOutput(useArgs);
 }
-
-/*
-export async function checkedCall(args: string[]) {
-    return new Promise<void>((resolve, reject) => {
-        const child = spawn(args[0], args.slice(1), { stdio: "inherit" });
-        child.on("exit", (code, signal) => {
-            if (code !== null) {
-                if (code !== 0) {
-                    return reject(
-                        new Error(
-                            `checkedCall: child process exited with code: ${code}. Command: ${args.join(" ")}`
-                        )
-                    );
-                }
-
-                return resolve();
-            }
-
-            return reject(
-                new Error(
-                    `checkedCall: child process terminated by signal: ${signal}. Command: ${args.join(" ")}`
-                )
-            );
-        });
-    });
-}
-
-export async function checkedCallOutput(args: string[]) {
-    return new Promise<string>((resolve, reject) => {
-        const child = spawn(args[0], args.slice(1), {
-            stdio: ["inherit", "pipe", "inherit"], // only capture STDOUT of subprocess.
-        });
-        let buffer = "";
-        child.stdout.on("data", (chunk) => {
-            if (typeof chunk === "string") {
-                buffer += chunk;
-            } else if (chunk instanceof Buffer) {
-                buffer += chunk.toString();
-            } else {
-                buffer += `${chunk}`;
-            }
-        });
-        child.on("exit", (code, signal) => {
-            if (code !== null) {
-                if (code !== 0) {
-                    return reject(
-                        new Error(
-                            `checkedCall: child process exited with code: ${code}. Command: ${args.join(" ")}`
-                        )
-                    );
-                }
-
-                return resolve(buffer);
-            }
-
-            return reject(
-                new Error(
-                    `checkedCall: child process terminated by signal: ${signal}. Command: ${args.join(" ")}`
-                )
-            );
-        });
-    });
-}
-*/
 
 export async function checkedCall(args: string[]) {
     const { code, stdout, stderr } = await simpleCall(args);
@@ -195,7 +129,7 @@ export async function resolveEndpoint(endpoint: string) {
     const endpointHost = parts[0];
     const port = parseInt(parts[1], 10);
 
-    const result = await dns.lookup(endpointHost, 4);
+    const result = await dnsPromise.lookup(endpointHost, 4);
     if (result.address !== endpointHost) {
         logger.info(`endpoint ${endpointHost} resolved to ${result.address}`);
     }
@@ -236,36 +170,12 @@ export function formatTempDirPath(namespace: string) {
     return `/tmp/networktools-${namespace}`;
 }
 
-export async function EnsureNetNs(namespace: string) {
-    const output = await sudoCallOutput(["ip", "-j", "netns", "list"]);
-    const netnsList = z
-        .object({ name: z.string() })
-        .array()
-        .parse(JSON.parse(output));
-    if (netnsList.find((ns) => ns.name === namespace) !== undefined) {
-        return;
-    }
-    await sudoCall(["ip", "netns", "add", namespace]);
-}
-
-export async function EnsureIPForward(namespace: string) {
-    await sudoCall(["sysctl", "-w", `net.ipv4.ip_forward=1`]);
-    await sudoCall(
-        nsWrap(namespace, ["sysctl", "-w", `net.ipv4.ip_forward=1`])
-    );
-}
-
-export async function EnsureTempDir(namespace: string) {
-    await sudoCall(["mkdir", "-p", formatTempDirPath(namespace)]);
-    await sudoCall([
-        "mkdir",
-        "-p",
-        path.join(formatTempDirPath(namespace), "router"),
-    ]);
+export function formatUnitname(namespace: string, type: string) {
+    return `networktools-${namespace}-${type}-${crypto.randomUUID()}`;
 }
 
 export function withDefaultNumber(n: number | undefined, def: number) {
-    if (n === undefined || isNaN(n) || isFinite(n) || n === 0) {
+    if (n === undefined || isNaN(n) || !isFinite(n) || n === 0) {
         return def;
     }
 

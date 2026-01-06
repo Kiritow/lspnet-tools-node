@@ -80,7 +80,7 @@ async function tryStopContainerFromSystemd(unitName: string) {
 
 export async function shutdownRouterContainer(
     namespace: string,
-    needClearTemp?: boolean
+    needClearTemp?: boolean // default to false
 ) {
     const container = await inspectRouterContainer(namespace);
     if (container === undefined) return;

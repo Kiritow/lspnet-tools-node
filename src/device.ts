@@ -5,7 +5,7 @@ import z from "zod";
 
 import { logger } from "./common";
 import { nsWrap, resolveEndpoint, sudoCall, sudoCallOutput } from "./utils";
-import { GetAllAddressFromLinkNetworkCIDR } from "shared-utils";
+import { GetAllAddressFromLinkNetworkCIDR } from "./shared-utils";
 
 export async function CreateWireGuardDevice(
     namespace: string,
@@ -16,25 +16,14 @@ export async function CreateWireGuardDevice(
     logger.info(`Creating WireGuard device ${name} in namespace ${namespace}`);
     await sudoCall(["ip", "link", "add", name, "type", "wireguard"]);
     if (namespace !== "") {
-        await sudoCall([
-            "ip",
-            "netns",
-            "exec",
-            namespace,
-            "ip",
-            "link",
-            "set",
-            name,
-            "netns",
-            namespace,
-        ]);
+        await sudoCall(["ip", "link", "set", name, "netns", namespace]);
     }
 
     await sudoCall(
         nsWrap(namespace, ["ip", "addr", "add", address, "dev", name])
     );
     await sudoCall(
-        nsWrap(namespace, ["ip", "link", "set", name, "mtu", mtu.toString()])
+        nsWrap(namespace, ["ip", "link", "set", "dev", name, "mtu", `${mtu}`])
     );
 }
 

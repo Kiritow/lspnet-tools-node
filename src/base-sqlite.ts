@@ -1,5 +1,5 @@
-import { Logger } from "base-log";
 import sqlite3 from "sqlite3";
+import { Logger } from "./base-log";
 
 export class BaseSQLite {
     private db: sqlite3.Database;

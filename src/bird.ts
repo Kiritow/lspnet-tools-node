@@ -124,7 +124,7 @@ function simpleFormatBirdConfig(configText: string) {
     return output.join("\n");
 }
 
-export function FormatBirdConfig(options: {
+export function formatBirdConfig(options: {
     routerId?: string;
     directInterfaceNames: string[];
     ospfImportExcludeCIDRs: string[];
