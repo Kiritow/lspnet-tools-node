@@ -45,20 +45,20 @@ export class ConfigStore extends BaseSQLite {
         super(filename, logger);
     }
 
-    async init() {
-        await this.run(
+    init() {
+        this.run(
             "create table if not exists nodeconfig (key, value, unique (key))"
         );
-        await this.run(
+        this.run(
             "create table if not exists simplekv (key, value, expires, unique (key))"
         );
-        await this.run(
+        this.run(
             "create table if not exists wgkey (private, public, unique (public))"
         );
     }
 
-    async getNodeSettings() {
-        const results = await this.query("select key, value from nodeconfig");
+    getNodeSettings() {
+        const results = this.query("select key, value from nodeconfig");
         if (results.length < 1) {
             return undefined;
         }
@@ -71,8 +71,8 @@ export class ConfigStore extends BaseSQLite {
         );
     }
 
-    async getPartialNodeSettings() {
-        const results = await this.query("select key, value from nodeconfig");
+    getPartialNodeSettings() {
+        const results = this.query("select key, value from nodeconfig");
         if (results.length < 1) {
             return undefined;
         }
@@ -85,7 +85,7 @@ export class ConfigStore extends BaseSQLite {
             .parse(Object.fromEntries(kvs.map((kv) => [kv.key, kv.value])));
     }
 
-    async setNodeSettings(updates: Partial<NodeSettings>) {
+    setNodeSettings(updates: Partial<NodeSettings>) {
         const kvs = Object.entries(updates)
             .map(([key, value]) => ({
                 key,
@@ -93,21 +93,21 @@ export class ConfigStore extends BaseSQLite {
             }))
             .filter((kv) => kv.value !== undefined);
         for (const kv of kvs) {
-            await this.upsert("nodeconfig", { key: kv.key, value: kv.value }, [
+            this.upsert("nodeconfig", { key: kv.key, value: kv.value }, [
                 "value",
             ]);
         }
     }
 
-    async createWireGuardKey(privateKey: string, publicKey: string) {
-        return await this.insert("wgkey", {
+    createWireGuardKey(privateKey: string, publicKey: string) {
+        return this.insert("wgkey", {
             private: privateKey,
             public: publicKey,
         });
     }
 
-    async getAllWireGuardKeys() {
-        const results = await this.query("select * from wgkey");
+    getAllWireGuardKeys() {
+        const results = this.query("select * from wgkey");
         return z
             .object({ private: z.string(), public: z.string() })
             .array()
@@ -115,8 +115,8 @@ export class ConfigStore extends BaseSQLite {
     }
 
     // Custom simple KV store with optional TTL
-    private async _getKey(key: string) {
-        const results = await this.query(
+    private _getKey(key: string) {
+        const results = this.query(
             "select value, expires from simplekv where key=?",
             [key]
         );
@@ -128,30 +128,34 @@ export class ConfigStore extends BaseSQLite {
             .object({ value: z.unknown(), expires: z.number() })
             .parse(results[0]);
         if (expires > Math.floor(Date.now() / 1000)) {
-            await this.run("delete from simplekv where key=?", [key]);
+            this.run("delete from simplekv where key=?", [key]);
             return undefined;
         }
 
         return value;
     }
 
-    private async _setKey(key: string, value: unknown, ttlSeconds?: number) {
+    private async _setKey(
+        key: string,
+        value: string | number,
+        ttlSeconds?: number
+    ) {
         const useTTL =
             ttlSeconds !== undefined
                 ? Math.floor((Date.now() + ttlSeconds * 1000) / 1000)
                 : null;
-        await this.upsert("simplekv", { key, value, expires: useTTL }, [
+        this.upsert("simplekv", { key, value, expires: useTTL }, [
             "value",
             "expires",
         ]);
     }
 
-    private async _deleteKey(key: string) {
-        await this.run("delete from simplekv where key=?", [key]);
+    private _deleteKey(key: string) {
+        this.run("delete from simplekv where key=?", [key]);
     }
 
-    async getLocalUnderlayState(ifname: string) {
-        const v = await this._getKey(`underlay-worker-${ifname}`);
+    getLocalUnderlayState(ifname: string) {
+        const v = this._getKey(`underlay-worker-${ifname}`);
         if (v === undefined) {
             return undefined;
         }
@@ -159,11 +163,11 @@ export class ConfigStore extends BaseSQLite {
         return _localUnderlayStateSchema.parse(JSON.parse(z.string().parse(v)));
     }
 
-    async deleteLocalUnderlayState(ifname: string) {
-        await this._deleteKey(`underlay-worker-${ifname}`);
+    deleteLocalUnderlayState(ifname: string) {
+        this._deleteKey(`underlay-worker-${ifname}`);
     }
 
     async setLocalUnderlayState(ifname: string, state: LocalUnderlayState) {
-        await this._setKey(`underlay-worker-${ifname}`, JSON.stringify(state));
+        this._setKey(`underlay-worker-${ifname}`, JSON.stringify(state));
     }
 }

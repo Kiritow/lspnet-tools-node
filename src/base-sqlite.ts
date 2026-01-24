@@ -1,74 +1,62 @@
-import sqlite3 from "sqlite3";
+import { DatabaseSync, SQLInputValue } from "node:sqlite";
 import { Logger } from "./base-log";
+import assert from "assert";
 
 export class BaseSQLite {
-    private db: sqlite3.Database;
+    private db: DatabaseSync;
     private logger?: Logger;
 
     constructor(filename: string, logger?: Logger) {
-        this.db = new sqlite3.Database(filename);
+        this.db = new DatabaseSync(filename);
         this.logger = logger;
     }
 
-    async _run(sql: string, params?: unknown) {
-        return new Promise<{ lastID: number; changes: number }>(
-            (resolve, reject) => {
-                this.logger?.debug(sql, params);
-                this.db.run(sql, params, function (this, err) {
-                    if (err !== null) {
-                        reject(err);
-                    } else {
-                        resolve({
-                            lastID: this.lastID,
-                            changes: this.changes,
-                        });
-                    }
-                });
-            }
-        );
+    _run(sql: string, params?: SQLInputValue[]) {
+        this.logger?.debug(sql, params);
+        const stmt = this.db.prepare(sql);
+        const result = stmt.run(...(params ?? []));
+        const lastID = result.lastInsertRowid;
+        const changes = result.changes;
+        assert(typeof lastID === "number", "BigInt lastID not supported");
+        assert(typeof changes === "number", "BigInt changes not supported");
+        return { lastID, changes };
     }
 
     // UPDATE, DELETE returns the number of rows changed
-    async run(sql: string, params?: unknown) {
-        return (await this._run(sql, params)).changes;
+    run(sql: string, params?: SQLInputValue[]) {
+        return this._run(sql, params).changes;
     }
 
-    async query(sql: string, params?: unknown) {
-        return new Promise<unknown[]>((resolve, reject) => {
-            this.logger?.debug(sql, params);
-            this.db.all<unknown>(sql, params, function (this, err, rows) {
-                if (err !== null) {
-                    reject(err);
-                } else {
-                    resolve(rows);
-                }
-            });
-        });
+    query(sql: string, params?: SQLInputValue[]) {
+        this.logger?.debug(sql, params);
+        const stmt = this.db.prepare(sql);
+        const result = stmt.all(...(params ?? []));
+        return result;
     }
 
-    async insert(table: string, data: Record<string, unknown>) {
+    insert(table: string, data: Record<string, SQLInputValue>) {
         const keys = Object.keys(data);
         const sqlValues = new Array(keys.length).fill("?").join(",");
 
         const sql = `INSERT INTO ${table}(${keys.join(",")}) VALUES(${sqlValues})`;
         const params = keys.map((key) => data[key]);
 
-        return (await this._run(sql, params)).lastID;
+        return this._run(sql, params).lastID;
     }
 
-    async insertIgnore(table: string, data: Record<string, unknown>) {
+    insertIgnore(table: string, data: Record<string, SQLInputValue>) {
         const keys = Object.keys(data);
         const sqlValues = new Array(keys.length).fill("?").join(",");
 
         const sql = `INSERT INTO ${table}(${keys.join(",")}) VALUES(${sqlValues}) ON CONFLICT DO NOTHING`;
         const params = keys.map((key) => data[key]);
 
-        return (await this._run(sql, params)).lastID;
+        return this._run(sql, params).lastID;
     }
 
-    async upsert(
+    upsert(
         table: string,
-        data: Record<string, unknown>,
+        data: Record<string, SQLInputValue>,
         upsertKeys: string[],
         updateTimeFieldName?: string
     ) {
@@ -86,6 +74,6 @@ export class BaseSQLite {
             .map((key) => data[key])
             .concat(upsertKeys.map((key) => data[key]));
 
-        return (await this._run(sql, params)).lastID;
+        return this._run(sql, params).lastID;
     }
 }
