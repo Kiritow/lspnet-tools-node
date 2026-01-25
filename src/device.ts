@@ -66,7 +66,7 @@ export async function AssignWireGuardDevice(
                 }
             }
             if (options.keepalive) {
-                args.push("keepalive", `${options.keepalive}`);
+                args.push("persistent-keepalive", `${options.keepalive}`);
             }
             if (options.allowedIPs) {
                 args.push("allowed-ips", options.allowedIPs);
@@ -332,7 +332,6 @@ const _ipAddrSchema = z.object({
     flags: z.array(z.string()),
     mtu: z.number(),
     operstate: z.string(),
-    broadcast: z.string(),
     addr_info: z
         .object({
             family: z.string(),

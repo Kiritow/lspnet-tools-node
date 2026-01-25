@@ -656,7 +656,7 @@ export class ControlAgent {
         // peers have been synced, so any peer in remotePeers now should be on this node
         const localInterfaceCIDRs = remotePeers.map((p) => {
             const addr = new Address4(p.addressCIDR).startAddress();
-            return `${addr.address}/${addr.subnet}`;
+            return addr.address; // has CIDR suffix
         });
         const costMap = new Map<string, number>();
         const toPingInterfaces: string[] = [];

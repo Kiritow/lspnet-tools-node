@@ -11,7 +11,9 @@ export function GetAllAddressFromLinkNetworkCIDR(networkCIDR: string) {
     );
 
     const networkAddressRaw = addr.startAddress().bigInt();
-    const firstAddress = Address4.fromBigInt(networkAddressRaw + 1n).address;
-    const secondAddress = Address4.fromBigInt(networkAddressRaw + 2n).address;
+    const firstAddress = Address4.fromBigInt(networkAddressRaw + 1n).addressMinusSuffix;
+    const secondAddress = Address4.fromBigInt(networkAddressRaw + 2n).addressMinusSuffix;
+    assert(firstAddress !== undefined, `Failed to get first address from ${networkCIDR}`);
+    assert(secondAddress !== undefined, `Failed to get second address from ${networkCIDR}`);
     return [`${firstAddress}/30`, `${secondAddress}/30`];
 }

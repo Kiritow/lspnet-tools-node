@@ -166,7 +166,7 @@ export async function CalculateMultiplePings(
                 return { ifname, runner, results };
             } catch (e) {
                 console.error(
-                    `failed to start ping for ${ifname}: ${e instanceof Error ? e.message : e}`
+                    `failed to start ping for ${ifname}: ${e instanceof Error ? e.message : String(e)}`
                 );
                 return { ifname, runner: undefined, results: [] };
             }
