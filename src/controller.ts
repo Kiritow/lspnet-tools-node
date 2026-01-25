@@ -651,8 +651,14 @@ export class ControlAgent {
         // peers have been synced, so any peer in remotePeers now should be on this node
         const localInterfaceCIDRs = remotePeers.map((p) => {
             const addr = parseIPAddr(p.addressCIDR);
-            assert(addr.subnetMask !== 32, "peer address has incorrect /32 subnet mask");
-            return addr.native.startAddress().address; // has CIDR suffix
+            assert(
+                addr.subnetMask !== 32,
+                "peer address has incorrect /32 subnet mask"
+            );
+            const startAddress = parseIPAddr(
+                addr.native.startAddress().address
+            );
+            return `${startAddress.address}/${addr.subnetMask}`;
         });
         const costMap = new Map<string, number>();
         const toPingInterfaces: string[] = [];
