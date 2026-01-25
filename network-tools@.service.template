@@ -4,8 +4,8 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-Type=oneshot
-RemainAfterExit=yes
+Type=simple
+RestartSec=5s
 WorkingDirectory=__INSTALL_DIR__
 ExecStart=node --enable-source-maps dist/index.js run -d local/%i.db
 
