@@ -332,14 +332,16 @@ const _ipAddrSchema = z.object({
     flags: z.array(z.string()),
     mtu: z.number(),
     operstate: z.string(),
+    broadcast: z.string(),
     addr_info: z
         .object({
-            local: z.string(),
-            broadcast: z.string(),
-            label: z.string(),
             family: z.string(),
-            scope: z.string(),
+            local: z.string(),
             prefixlen: z.number(),
+            scope: z.string(),
+            label: z.string(),
+            // valid_life_time: z.union([z.string(), z.number()]),
+            // preferred_life_time: z.union([z.string(), z.number()]),
         })
         .array(),
 });
