@@ -101,6 +101,15 @@ export class PingRunner {
                 }
             }
         });
+        child.stderr.on("data", (chunk) => {
+            if (typeof chunk === "string") {
+                console.error(chunk);
+            } else if (chunk instanceof Buffer) {
+                console.error(chunk.toString());
+            } else {
+                console.error(`${chunk}`);
+            }
+        });
 
         child.on("exit", (code, signal) => {
             console.info(
