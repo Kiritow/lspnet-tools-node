@@ -155,7 +155,7 @@ export class NodeManagerClient {
         );
         if (res.status !== 200) {
             throw new Error(
-                `Failed to get data from ${url}: ${res.status} ${res.statusText}`
+                `Failed to get data from ${url}: ${res.status} ${res.statusText} ${JSON.stringify(res.data)}`
             );
         }
 
@@ -183,7 +183,7 @@ export class NodeManagerClient {
 
         if (res.status !== 200) {
             throw new Error(
-                `Failed to post data to ${url}: ${res.status} ${res.statusText}`
+                `Failed to post data to ${url}: ${res.status} ${res.statusText} ${JSON.stringify(res.data)}`
             );
         }
 
@@ -248,12 +248,12 @@ export class NodeManagerClient {
         });
     }
 
-    async sendRouteTelemetry(
-        areaRoutes: Record<string, NodeRouterInfo[]>,
+    async sendRouterTelemetry(
+        areaRouters: Record<string, NodeRouterInfo[]>,
         otherASBRs: NodeRouterInfo[]
     ) {
-        await this.post("/api/v1/node/route_telemetry", {
-            area_routes: areaRoutes,
+        await this.post("/api/v1/node/router_telemetry", {
+            area_routers: areaRouters,
             other_asbrs: otherASBRs,
         });
     }
@@ -290,7 +290,7 @@ export async function JoinCluster(
     );
     if (res.status !== 200) {
         throw new Error(
-            `Failed to join cluster: ${res.status} ${res.statusText}`
+            `Failed to join cluster: ${res.status} ${res.statusText} ${JSON.stringify(res.data)}`
         );
     }
 
