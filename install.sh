@@ -3,6 +3,9 @@ set -euxo pipefail
 
 mkdir -p local
 
+npm install --loglevel=verbose
+npm run build
+
 sudo apt install -y wireguard
 sudo apt install -y podman socat
 
