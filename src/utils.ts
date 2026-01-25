@@ -6,7 +6,7 @@ import { logger } from "./common";
 
 export function sudoWrap(args: string[]) {
     if (process.geteuid!() != 0) {
-        logger.warn(`sudo: ${args.join(" ")}`);
+        logger.debug(`sudo: ${args.join(" ")}`);
         return ["sudo", ...args];
     }
 

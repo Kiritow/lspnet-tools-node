@@ -42,9 +42,6 @@ export async function tryCheckIptablesRule(
             ) ||
             stderr.includes("iptables: No chain/target/match by that name")
         ) {
-            logger.info(
-                `iptables rule not exist: iptables -t ${tableName} -C ${chainName} ${ruleArgs.join(" ")}`
-            );
             return false;
         }
 
