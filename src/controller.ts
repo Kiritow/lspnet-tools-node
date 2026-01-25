@@ -675,7 +675,7 @@ export class ControlAgent {
         );
         for (const [ifname, pingMs] of pingResultMap.entries()) {
             if (pingMs !== undefined && costMap.has(ifname)) {
-                costMap.set(ifname, Math.min(1, Math.floor(pingMs)));
+                costMap.set(ifname, Math.max(1, Math.floor(pingMs)));
             }
         }
 
@@ -738,7 +738,7 @@ export class ControlAgent {
         console.log(
             `Reload bird config for namespace ${nodeSettings.namespace} in container ${containerId}...`
         );
-        sudoCall(["podman", "exec", containerId, "birdc", "configure"]);
+        await sudoCall(["podman", "exec", containerId, "birdc", "configure"]);
         console.log(
             `Bird config reloaded for namespace ${nodeSettings.namespace}`
         );
