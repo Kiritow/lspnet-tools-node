@@ -1,6 +1,8 @@
-import { getOrInitNodeInteractive } from "cli-api";
-import { Command } from "commander";
 import assert from "node:assert";
+import { Command } from "commander";
+import { getOrInitNodeInteractive } from "./cli-api";
+import { ServiceMain } from "./service";
+
 const program = new Command();
 
 program
@@ -19,6 +21,22 @@ program
             "Database path is required"
         );
         await getOrInitNodeInteractive(database);
+    });
+
+program
+    .command("run")
+    .description("Run the node program")
+    .requiredOption("-d, --database <path>", "Path to database file")
+    .action(async (options) => {
+        const database = options.database;
+        assert(
+            database !== undefined && typeof database === "string",
+            "Database path is required"
+        );
+        ServiceMain(database).catch((err) => {
+            console.error("Fatal error in ServiceMain:", err);
+            process.exit(1);
+        });
     });
 
 program.parse();

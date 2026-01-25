@@ -75,11 +75,12 @@ export async function getOrInitNodeInteractive(databasePath: string) {
         nodeSettings.domainPrefix.length < 1
     ) {
         const domainPrefix = await input({
-            message: "Enter domain prefix for the node (e.g., example.com):",
+            message:
+                "Enter controller domain prefix (e.g., https://example.com):",
         });
         assert(domainPrefix.length > 0, "Domain prefix cannot be empty");
         const token = await input({
-            message: `Enter join-cluster token for domain prefix ${domainPrefix}:`,
+            message: `Enter join-cluster token for ${domainPrefix}:`,
         });
         const nodeId = await JoinCluster(privateKeyPEM, domainPrefix, token);
         await store.setNodeSettings({

@@ -1,6 +1,7 @@
 import assert from "node:assert";
 import dnsPromise from "node:dns/promises";
 import { spawn } from "node:child_process";
+import z from "zod";
 import { logger } from "./common";
 
 export function sudoWrap(args: string[]) {
@@ -200,4 +201,25 @@ class _ZeroableString {
 
 export function ZeroableString(value: string | undefined) {
     return new _ZeroableString(value);
+}
+
+export async function sleep(ms: number) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export function readableZodError<T>(err: z.ZodError<T>): string {
+    return err.errors
+        .map((e) => {
+            const readablePath = e.path
+                .map((p) => {
+                    if (typeof p === "number") {
+                        return `[${p}]`;
+                    }
+                    return `.${p}`;
+                })
+                .join("")
+                .substring(1);
+            return `${readablePath}: ${e.message}`;
+        })
+        .join("; ");
 }
