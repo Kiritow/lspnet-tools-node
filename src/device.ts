@@ -5,7 +5,8 @@ import z from "zod";
 
 import { logger } from "./common";
 import { nsWrap, resolveEndpoint, sudoCall, sudoCallOutput } from "./utils";
-import { GetAllAddressFromLinkNetworkCIDR } from "./shared-utils";
+import { GetAllAddressFromVethLinkCIDR } from "./shared-utils";
+import { AddressV4Info, parseIPAddr } from "./ip-addr";
 
 export async function CreateWireGuardDevice(
     namespace: string,
@@ -109,7 +110,7 @@ export async function CreateVethDevice(
     await sudoCall(["ip", "link", "set", peerName, "netns", namespace]);
 
     const [vethAddress, vethPeerAddress] =
-        GetAllAddressFromLinkNetworkCIDR(vethNetwork);
+        GetAllAddressFromVethLinkCIDR(vethNetwork);
     await sudoCall(["ip", "addr", "add", vethAddress, "dev", hostName]);
     await sudoCall([
         "ip",
@@ -349,16 +350,16 @@ type _ipAddrSchema = z.infer<typeof _ipAddrSchema>;
 export interface InterfaceState {
     name: string;
     mtu: number;
-    address: string | undefined;
+    addrInfo4: AddressV4Info | undefined;
 
     raw: _ipAddrSchema;
 }
 
 function convertInterfaceState(s: _ipAddrSchema): InterfaceState {
-    let v4Address: string | undefined = undefined;
+    let addrInfo4: AddressV4Info | undefined = undefined;
     for (const addr of s.addr_info) {
         if (addr.family === "inet") {
-            v4Address = `${addr.local}/${addr.prefixlen}`;
+            addrInfo4 = parseIPAddr(`${addr.local}/${addr.prefixlen}`);
             break;
         }
     }
@@ -366,7 +367,7 @@ function convertInterfaceState(s: _ipAddrSchema): InterfaceState {
     return {
         name: s.ifname,
         mtu: s.mtu,
-        address: v4Address,
+        addrInfo4,
 
         raw: s,
     };

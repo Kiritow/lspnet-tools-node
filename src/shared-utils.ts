@@ -1,19 +1,16 @@
 import assert from "node:assert";
-import { Address4 } from "ip-address";
-
+import { parseIPAddr, parseIPAddrFromBigInt } from "./ip-addr";
 // Shared Utils with lspnet-server
 
-export function GetAllAddressFromLinkNetworkCIDR(networkCIDR: string) {
-    const addr = new Address4(networkCIDR);
+export function GetAllAddressFromVethLinkCIDR(networkCIDR: string) {
+    const addr = parseIPAddr(networkCIDR).native;
     assert(
         addr.subnetMask == 30,
         `Invalid LinkCIDR ${networkCIDR} with subnet mask: ${addr.subnetMask}`
     );
 
     const networkAddressRaw = addr.startAddress().bigInt();
-    const firstAddress = Address4.fromBigInt(networkAddressRaw + 1n).addressMinusSuffix;
-    const secondAddress = Address4.fromBigInt(networkAddressRaw + 2n).addressMinusSuffix;
-    assert(firstAddress !== undefined, `Failed to get first address from ${networkCIDR}`);
-    assert(secondAddress !== undefined, `Failed to get second address from ${networkCIDR}`);
+    const firstAddress = parseIPAddrFromBigInt(networkAddressRaw + 1n).address;
+    const secondAddress = parseIPAddrFromBigInt(networkAddressRaw + 2n).address;
     return [`${firstAddress}/30`, `${secondAddress}/30`];
 }

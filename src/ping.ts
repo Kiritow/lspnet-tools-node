@@ -2,8 +2,8 @@ import { ChildProcess, spawn } from "node:child_process";
 import assert from "node:assert";
 import { nsWrap, sudoWrap } from "./utils";
 import { GetInterfaceState } from "./device";
-import { GetAllAddressFromLinkNetworkCIDR } from "./shared-utils";
-import { Address4 } from "ip-address";
+import { GetAllAddressFromVethLinkCIDR } from "./shared-utils";
+import { parseIPAddr } from "./ip-addr";
 
 export class PingRunner {
     private child: ChildProcess | undefined;
@@ -17,19 +17,7 @@ export class PingRunner {
         private directLink?: boolean // default to false
     ) {
         this.child = undefined;
-
-        const ipAddress = new Address4(targetIP);
-        const useAddress = ipAddress.addressMinusSuffix;
-        assert(
-            useAddress !== undefined,
-            `Invalid target IP address: ${targetIP}`
-        );
-        if (this.targetIP !== useAddress) {
-            console.warn(
-                `correcting target IP from ${this.targetIP} to ${useAddress}`
-            );
-            this.targetIP = useAddress;
-        }
+        this.targetIP = parseIPAddr(targetIP).address;
     }
 
     onReceivePing(output: string) {
@@ -166,16 +154,19 @@ export async function CalculateMultiplePings(
                     namespace,
                     ifname
                 );
+
+                const addrInfo4 = interfaceState.addrInfo4;
                 assert(
-                    interfaceState.address !== undefined,
-                    `interface ${ifname} has no address`
+                    addrInfo4 !== undefined,
+                    `interface ${ifname} has no ipv4 address`
                 );
-                const allIPs = GetAllAddressFromLinkNetworkCIDR(
-                    interfaceState.address
+                const allIPs = GetAllAddressFromVethLinkCIDR(
+                    addrInfo4.addressCIDR
                 );
                 const otherEndIP = allIPs.find(
-                    (ip) => ip !== interfaceState.address
+                    (ip) => ip !== addrInfo4.addressCIDR
                 );
+
                 assert(
                     otherEndIP !== undefined,
                     `cannot find other end IP for ${ifname}`

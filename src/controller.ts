@@ -1,6 +1,5 @@
 import assert from "node:assert";
 import fsPromise from "node:fs/promises";
-import { Address4 } from "ip-address";
 import {
     NodeManagerClient,
     NodeRouterInfo,
@@ -54,6 +53,7 @@ import { CalculateMultiplePings, PingRunner } from "./ping";
 import { BFDConfig, CommonOSPFConfig, formatBirdConfig } from "./bird";
 import { inspectRouterContainer } from "./podman";
 import { GetRouterOSPFState, RouterInfo } from "./bird-ospf";
+import { parseIPAddr } from "./ip-addr";
 
 async function tryPatchMTU(namespace: string) {
     const { code, stderr } = await simpleCall(
@@ -296,12 +296,7 @@ export class ControlAgent {
 
             // TODO: dummy nic SNAT?
             const ethState = await GetInterfaceState("", nodeSettings.ethName);
-            const snatIPCIDR = ethState.address;
-            assert(
-                snatIPCIDR !== undefined,
-                `Failed to get IP address of interface ${nodeSettings.ethName}`
-            );
-            const snatIP = new Address4(snatIPCIDR).addressMinusSuffix;
+            const snatIP = ethState.addrInfo4?.address;
             assert(snatIP !== undefined, "addressMinusSuffix is undefined");
 
             await tryAppendIptablesRule(
@@ -655,8 +650,9 @@ export class ControlAgent {
     ) {
         // peers have been synced, so any peer in remotePeers now should be on this node
         const localInterfaceCIDRs = remotePeers.map((p) => {
-            const addr = new Address4(p.addressCIDR).startAddress();
-            return addr.address; // has CIDR suffix
+            const addr = parseIPAddr(p.addressCIDR);
+            assert(addr.subnetMask !== 32, "peer address has incorrect /32 subnet mask");
+            return addr.native.startAddress().address; // has CIDR suffix
         });
         const costMap = new Map<string, number>();
         const toPingInterfaces: string[] = [];
