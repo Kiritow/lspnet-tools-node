@@ -1,0 +1,13 @@
+[Unit]
+Description=Network Tools Service for %i
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=__INSTALL_DIR__
+ExecStart=node --enable-source-maps dist/index.js run -d local/%i.db
+
+[Install]
+WantedBy=multi-user.target
