@@ -1,6 +1,6 @@
 import { ChildProcess, spawn } from "node:child_process";
 import assert from "node:assert";
-import { nsWrap } from "./utils";
+import { nsWrap, sudoWrap } from "./utils";
 import { GetInterfaceState } from "./device";
 import { GetAllAddressFromLinkNetworkCIDR } from "./shared-utils";
 import { Address4 } from "ip-address";
@@ -80,6 +80,11 @@ export class PingRunner {
                 this.targetIP,
             ]);
         })();
+
+        if (this.namespace !== "") {
+            const wrappedArgs = sudoWrap(args);
+            args.splice(0, args.length, ...wrappedArgs);
+        }
 
         const child = spawn(args[0], args.slice(1));
 
