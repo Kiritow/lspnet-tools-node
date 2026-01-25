@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "main": "dist/index.js",
   "scripts": {
-    "build": "npm run eslint && rm -rf dist/ && tsc",
+    "build": "npm run eslint && rm -rf dist/ && tsc && tsc-alias",
+    "build:tsup": "npm run eslint && rm -rf dist/ && tsc && tsup --sourcemap",
     "eslint": "eslint -c .eslintrc.js"
   },
   "keywords": [],
@@ -17,14 +18,17 @@
     "eslint-config-prettier": "^9.0.0",
     "eslint-plugin-prettier": "^5.0.1",
     "prettier": "^3.0.3",
+    "tsc-alias": "^1.8.16",
+    "tsup": "^8.5.1",
     "tsx": "^4.19.4",
     "typescript": "^5.8.3"
   },
   "dependencies": {
+    "@inquirer/prompts": "^8.1.0",
     "axios": "^1.9.0",
+    "commander": "^14.0.2",
     "dayjs": "^1.11.13",
     "ip-address": "^10.0.1",
-    "sqlite3": "^5.1.7",
     "winston": "^3.17.0",
     "zod": "^3.24.4"
   }
