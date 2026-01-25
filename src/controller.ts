@@ -203,7 +203,7 @@ export class ControlAgent {
         let state: InterfaceState | undefined = undefined;
         try {
             state = await GetInterfaceState(
-                nodeSettings.namespace,
+                "",
                 `${nodeSettings.namespace}-veth0`
             );
         } catch (e) {
@@ -296,11 +296,14 @@ export class ControlAgent {
 
             // TODO: dummy nic SNAT?
             const ethState = await GetInterfaceState("", nodeSettings.ethName);
-            const snatIP = ethState.address;
+            const snatIPCIDR = ethState.address;
             assert(
-                snatIP !== undefined,
+                snatIPCIDR !== undefined,
                 `Failed to get IP address of interface ${nodeSettings.ethName}`
             );
+            const snatIP = new Address4(snatIPCIDR).addressMinusSuffix;
+            assert(snatIP !== undefined, "addressMinusSuffix is undefined");
+
             await tryAppendIptablesRule(
                 "nat",
                 `${nodeSettings.namespace}-POSTROUTING`,
@@ -797,7 +800,7 @@ export class ControlAgent {
                 return [areaId, telemetryRouters];
             })
         );
-        await this.client.sendRouteTelemetry(
+        await this.client.sendRouterTelemetry(
             telemetryAreaRouters,
             otherASBRs.map((r) => routerInfoToNodeRouterInfo(r))
         );
