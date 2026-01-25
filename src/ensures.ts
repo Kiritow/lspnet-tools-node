@@ -10,13 +10,16 @@ import {
 
 export async function EnsureNetNs(namespace: string) {
     const output = await sudoCallOutput(["ip", "-j", "netns", "list"]);
-    const netnsList = z
-        .object({ name: z.string() })
-        .array()
-        .parse(JSON.parse(output));
-    if (netnsList.find((ns) => ns.name === namespace) !== undefined) {
-        return;
+    if (output.trim() !== "") {
+        const netnsList = z
+            .object({ name: z.string() })
+            .array()
+            .parse(JSON.parse(output));
+        if (netnsList.find((ns) => ns.name === namespace) !== undefined) {
+            return;
+        }
     }
+
     await sudoCall(["ip", "netns", "add", namespace]);
 }
 
