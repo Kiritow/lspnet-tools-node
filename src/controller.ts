@@ -552,10 +552,10 @@ export class ControlAgent {
 
             if (localState === undefined) {
                 logger.info(`Creating WireGuard peer interface ${ifname}...`);
-                const privateKey = localWGKeyMap.get(peer.peerPublicKey);
+                const privateKey = localWGKeyMap.get(peer.publicKey);
                 assert(
                     privateKey !== undefined,
-                    `No local WireGuard key for public key ${peer.peerPublicKey} used in peer ${peer.id}`
+                    `No local WireGuard key for public key ${peer.publicKey} used in peer ${peer.id}`
                 );
                 await CreateWireGuardDevice(
                     nodeSettings.namespace,
