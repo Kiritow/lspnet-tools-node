@@ -106,7 +106,7 @@ export async function shutdownRouterContainer(
 
 export async function startRouterContainerWithSystemd(namespace: string) {
     logger.info(`Creating router container with namespace: ${namespace}`);
-    sudoCall([
+    await sudoCall([
         "podman",
         "create",
         "--network",
