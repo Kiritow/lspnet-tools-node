@@ -3,6 +3,7 @@ import assert from "node:assert";
 import { nsWrap } from "./utils";
 import { GetInterfaceState } from "./device";
 import { GetAllAddressFromLinkNetworkCIDR } from "./shared-utils";
+import { Address4 } from "ip-address";
 
 export class PingRunner {
     private child: ChildProcess | undefined;
@@ -16,6 +17,19 @@ export class PingRunner {
         private directLink?: boolean // default to false
     ) {
         this.child = undefined;
+
+        const ipAddress = new Address4(targetIP);
+        const useAddress = ipAddress.addressMinusSuffix;
+        assert(
+            useAddress !== undefined,
+            `Invalid target IP address: ${targetIP}`
+        );
+        if (this.targetIP !== useAddress) {
+            console.warn(
+                `correcting target IP from ${this.targetIP} to ${useAddress}`
+            );
+            this.targetIP = useAddress;
+        }
     }
 
     onReceivePing(output: string) {
