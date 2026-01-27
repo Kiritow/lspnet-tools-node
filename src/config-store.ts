@@ -125,9 +125,9 @@ export class ConfigStore extends BaseSQLite {
         }
 
         const { value, expires } = z
-            .object({ value: z.unknown(), expires: z.number() })
+            .object({ value: z.unknown(), expires: z.number().nullable() })
             .parse(results[0]);
-        if (expires > Math.floor(Date.now() / 1000)) {
+        if (expires !== null && expires < Math.floor(Date.now() / 1000)) {
             this.run("delete from simplekv where key=?", [key]);
             return undefined;
         }
