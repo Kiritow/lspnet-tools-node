@@ -106,7 +106,7 @@ export class PingRunner {
 
         child.on("exit", (code, signal) => {
             console.info(
-                `Ping process (for ${this.targetIP}) exited with code ${code}, signal ${signal}`
+                `Ping process (for ${this.targetIP}) (pid: ${child.pid ?? "-"}) exited with code ${code}, signal ${signal}`
             );
             this.child = undefined;
         });
@@ -184,6 +184,7 @@ export async function CalculateMultiplePings(
                 runner.start();
                 return { ifname, runner, results };
             } catch (e) {
+                console.error(e);
                 console.error(
                     `failed to start ping for ${ifname}: ${e instanceof Error ? e.message : String(e)}`
                 );
