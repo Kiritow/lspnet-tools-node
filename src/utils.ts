@@ -208,14 +208,18 @@ export async function sleep(ms: number) {
 }
 
 export function readableZodError<T>(err: z.ZodError<T>): string {
-    return err.errors
+    return err.issues
         .map((e) => {
             const readablePath = e.path
                 .map((p) => {
                     if (typeof p === "number") {
                         return `[${p}]`;
                     }
-                    return `.${p}`;
+                    if (typeof p === "string") {
+                        return `.${p}`;
+                    }
+                    // symbol
+                    return `.${String(p)}`;
                 })
                 .join("")
                 .substring(1);
