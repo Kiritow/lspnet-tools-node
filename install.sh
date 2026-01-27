@@ -3,6 +3,8 @@ set -euxo pipefail
 
 mkdir -p local
 
+NODE_PATH=$(which node)
+
 npm install --loglevel=verbose
 npm run build
 
@@ -30,6 +32,6 @@ cd ..
 
 sudo podman build . -t bird-router
 
-sed s#__INSTALL_DIR__#$PWD#g network-tools@.service.template > /tmp/network-tools@.service
+sed -e s#__INSTALL_DIR__#$PWD#g -e s#__NODE_PATH__#$NODE_PATH#g network-tools@.service.template > /tmp/network-tools@.service
 sudo mv /tmp/network-tools@.service /etc/systemd/system/network-tools@.service
 sudo systemctl daemon-reload

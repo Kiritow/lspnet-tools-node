@@ -7,7 +7,7 @@ Wants=network-online.target
 Type=simple
 RestartSec=5s
 WorkingDirectory=__INSTALL_DIR__
-ExecStart=node --enable-source-maps dist/index.js run -d local/%i.db
+ExecStart=__NODE_PATH__ --enable-source-maps dist/index.js run -d local/%i.db
 
 [Install]
 WantedBy=multi-user.target
