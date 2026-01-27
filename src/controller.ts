@@ -370,7 +370,7 @@ export class ControlAgent {
                 const remoteGostClientConfig =
                     remoteUnderlay.config_gost_relay_client;
                 let serverIP = remoteGostClientConfig.server_addr;
-                if (serverIP === undefined || serverIP === "") {
+                if (isEmptyString(serverIP)) {
                     serverIP = (await resolveEndpoint(remotePeer.endpoint))
                         .host;
                 }
@@ -395,6 +395,12 @@ export class ControlAgent {
                     listen_port: remoteGostClientConfig.listen_port,
                     server_ip: serverIP,
                     server_port: remoteGostClientConfig.server_port,
+                });
+
+                // Set wireguard endpoint to gost listener
+                await AssignWireGuardDevice(nodeSettings.namespace, ifname, {
+                    peerPublic: remotePeer.publicKey,
+                    endpoint: `127.0.0.1:${remoteGostClientConfig.listen_port}`,
                 });
                 return;
             }
@@ -467,10 +473,13 @@ export class ControlAgent {
             if (
                 localUnderlayState.listen_port !==
                     remoteUnderlay.config_gost_relay_client.listen_port ||
-                localUnderlayState.server_ip !==
-                    remoteUnderlay.config_gost_relay_client.server_addr ||
                 localUnderlayState.server_port !==
-                    remoteUnderlay.config_gost_relay_client.server_port
+                    remoteUnderlay.config_gost_relay_client.server_port ||
+                (!isEmptyString(
+                    remoteUnderlay.config_gost_relay_client.server_addr
+                ) &&
+                    localUnderlayState.server_ip !==
+                        remoteUnderlay.config_gost_relay_client.server_addr)
             ) {
                 // config changed
                 logger.info(

@@ -32,7 +32,7 @@ export async function AssignWireGuardDevice(
     namespace: string,
     name: string,
     options: {
-        private: string;
+        private?: string;
         listenPort?: number;
         peerPublic?: string;
         endpoint?: string;
@@ -40,15 +40,22 @@ export async function AssignWireGuardDevice(
         allowedIPs?: string;
     }
 ) {
-    const tempFilename = `/tmp/${crypto.randomUUID()}.conf`;
-    await fs.writeFile(tempFilename, options.private);
+    const args: string[] = [];
+
+    let tempFilename: string | undefined = undefined;
+    if (options.private !== undefined) {
+        tempFilename = `/tmp/${crypto.randomUUID()}.conf`;
+        await fs.writeFile(tempFilename, options.private);
+
+        args.push("private-key", tempFilename);
+    }
 
     try {
-        const args = ["private-key", tempFilename];
         if (options.listenPort) {
             args.push("listen-port", `${options.listenPort}`);
         }
-        if (options.peerPublic) {
+
+        if (options.peerPublic !== undefined) {
             args.push("peer", options.peerPublic);
             if (options.endpoint) {
                 const resolvedEndpoint = await resolveEndpoint(
@@ -69,19 +76,21 @@ export async function AssignWireGuardDevice(
             if (options.keepalive) {
                 args.push("persistent-keepalive", `${options.keepalive}`);
             }
-            if (options.allowedIPs) {
+            if (options.allowedIPs !== undefined) {
                 args.push("allowed-ips", options.allowedIPs);
             }
         }
 
         await sudoCall(nsWrap(namespace, ["wg", "set", name].concat(args)));
     } finally {
-        fs.unlink(tempFilename).catch((err) => {
-            console.error(err);
-            logger.error(
-                `Failed to delete temporary file ${tempFilename}: ${err}`
-            );
-        });
+        if (tempFilename !== undefined) {
+            fs.unlink(tempFilename).catch((err) => {
+                console.error(err);
+                logger.error(
+                    `Failed to delete temporary file ${tempFilename}: ${err}`
+                );
+            });
+        }
     }
 }
 
