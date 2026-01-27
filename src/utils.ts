@@ -70,7 +70,7 @@ export async function simpleCall(args: string[], writeInput?: Buffer) {
         stdout: string;
         stderr: string;
         signal?: string;
-    }>((resolve, reject) => {
+    }>((resolve) => {
         const child = spawn(args[0], args.slice(1));
         if (writeInput !== undefined) {
             child.stdin.write(writeInput);
@@ -163,7 +163,9 @@ export async function StopSystemdServiceBestEffort(unitName: string) {
         await sudoCallOutput(["systemctl", "stop", unitName]);
     } catch (e) {
         console.error(e);
-        logger.warn(`failed to stop systemd service ${unitName}: ${e}`);
+        logger.warn(
+            `failed to stop systemd service ${unitName}: ${e instanceof Error ? e.message : String(e)}`
+        );
     }
 }
 
