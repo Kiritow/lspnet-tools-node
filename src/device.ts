@@ -377,10 +377,25 @@ export async function GetAllInterfaceStates(namespace: string | undefined) {
     const rawResult = await sudoCallOutput(
         nsWrap(namespace, ["ip", "-j", "addr", "show"])
     );
+    let jResult: unknown;
+    try {
+        jResult = JSON.parse(rawResult);
+    } catch (err) {
+        console.error(err);
+        logger.error(
+            "GetAllInterfaceStates: get json failed, retry in 3000ms..."
+        );
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+
+        const rawResult2 = await sudoCallOutput(
+            nsWrap(namespace, ["ip", "-j", "addr", "show"])
+        );
+        jResult = JSON.parse(rawResult2);
+    }
 
     return _ipAddrSchema
         .array()
-        .parse(JSON.parse(rawResult))
+        .parse(jResult)
         .map((s) => convertInterfaceState(s));
 }
 
@@ -388,8 +403,23 @@ export async function GetInterfaceState(namespace: string, name: string) {
     const rawResult = await sudoCallOutput(
         nsWrap(namespace, ["ip", "-j", "addr", "show", name])
     );
+    let jResult: unknown;
+    try {
+        jResult = JSON.parse(rawResult);
+    } catch (err) {
+        console.error(err);
+        logger.error(
+            `GetInterfaceState: get json for interface ${name} failed, retry in 3000ms...`
+        );
+        await new Promise((resolve) => setTimeout(resolve, 3000));
 
-    const result = _ipAddrSchema.array().parse(JSON.parse(rawResult));
+        const rawResult2 = await sudoCallOutput(
+            nsWrap(namespace, ["ip", "-j", "addr", "show", name])
+        );
+        jResult = JSON.parse(rawResult2);
+    }
+
+    const result = _ipAddrSchema.array().parse(jResult);
     if (result.length === 0) {
         throw new Error(`Interface ${name} not found`);
     }
