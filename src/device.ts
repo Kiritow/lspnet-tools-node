@@ -339,9 +339,9 @@ const _ipAddrSchema = z.object({
             local: z.string(),
             prefixlen: z.number(),
             scope: z.string(),
-            label: z.string(),
-            // valid_life_time: z.union([z.string(), z.number()]),
-            // preferred_life_time: z.union([z.string(), z.number()]),
+            label: z.string().optional(),
+            valid_life_time: z.union([z.string(), z.number()]).optional(),
+            preferred_life_time: z.union([z.string(), z.number()]).optional(),
         })
         .array(),
 });
