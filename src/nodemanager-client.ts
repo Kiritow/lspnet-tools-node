@@ -159,7 +159,7 @@ export class NodeManagerClient {
             );
         }
 
-        return res.data;
+        return res.data as unknown;
     }
 
     async post(url: string, data?: Record<string, unknown>): Promise<unknown> {
@@ -187,7 +187,7 @@ export class NodeManagerClient {
             );
         }
 
-        return res.data;
+        return res.data as unknown;
     }
 
     async getNodeInfo() {
@@ -208,8 +208,7 @@ export class NodeManagerClient {
     async getNodeConfig() {
         const res = await this.get("/api/v1/node/config");
         const rawConfig = z.object({ config: z.string() }).parse(res).config;
-        const config = JSON.parse(rawConfig);
-        return _remoteNodeInfoSchema.parse(config);
+        return _remoteNodeInfoSchema.parse(JSON.parse(rawConfig));
     }
 
     async getPeers() {

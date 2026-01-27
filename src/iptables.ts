@@ -116,7 +116,9 @@ export async function tryFlushIptables(tableName: string, chainName: string) {
         await sudoCall(["iptables", "-t", tableName, "-F", chainName]);
     } catch (e) {
         console.log(e);
-        logger.warn(`flush iptables ${tableName} ${chainName} failed: ${e}`);
+        logger.warn(
+            `flush iptables ${tableName} ${chainName} failed: ${e instanceof Error ? e.message : String(e)}`
+        );
     }
 }
 
@@ -179,7 +181,7 @@ export async function ClearIPTables(namespace: string) {
     } catch (e) {
         console.log(e);
         logger.warn(
-            `flush iptables FORWARD chain in namespace ${namespace} failed: ${e}`
+            `flush iptables FORWARD chain in namespace ${namespace} failed: ${e instanceof Error ? e.message : String(e)}`
         );
     }
 }

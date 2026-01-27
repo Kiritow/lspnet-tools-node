@@ -9,13 +9,13 @@ export async function getOrInitNodeInteractive(databasePath: string) {
     let store: ConfigStore;
     if (fs.statSync(databasePath, { throwIfNoEntry: false }) !== undefined) {
         store = new ConfigStore(databasePath, true);
-        await store.init();
+        store.init();
     } else {
         store = new ConfigStore(databasePath, true);
-        await store.init();
+        store.init();
 
         const privateKeyPEM = CreateNewNodePrivateKey();
-        await store.setNodeSettings({
+        store.setNodeSettings({
             privateKey: privateKeyPEM,
         });
         console.log(`Private key generated for node.`);
@@ -23,24 +23,24 @@ export async function getOrInitNodeInteractive(databasePath: string) {
             message: "Enter Ethernet interface name:",
         });
         assert(ethIfName.length > 0, "Interface name cannot be empty");
-        await store.setNodeSettings({
+        store.setNodeSettings({
             ethName: ethIfName,
         });
         const namespace = await input({
             message: "Enter namespace for the node:",
         });
         assert(namespace.length > 0, "Namespace cannot be empty");
-        await store.setNodeSettings({
+        store.setNodeSettings({
             namespace: namespace,
         });
         console.log(`Node initialized and saved to ${databasePath}`);
     }
 
-    const nodeSettings = await store.getPartialNodeSettings();
+    const nodeSettings = store.getPartialNodeSettings();
     let privateKeyPEM = nodeSettings?.privateKey;
     if (privateKeyPEM === undefined || privateKeyPEM.length < 1) {
         privateKeyPEM = CreateNewNodePrivateKey();
-        await store.setNodeSettings({
+        store.setNodeSettings({
             privateKey: privateKeyPEM,
         });
         console.log(`Private key generated for node.`);
@@ -53,7 +53,7 @@ export async function getOrInitNodeInteractive(databasePath: string) {
             message: "Enter Ethernet interface name:",
         });
         assert(ethIfName.length > 0, "Interface name cannot be empty");
-        await store.setNodeSettings({
+        store.setNodeSettings({
             ethName: ethIfName,
         });
     }
@@ -65,7 +65,7 @@ export async function getOrInitNodeInteractive(databasePath: string) {
             message: "Enter namespace for the node:",
         });
         assert(namespace.length > 0, "Namespace cannot be empty");
-        await store.setNodeSettings({
+        store.setNodeSettings({
             namespace: namespace,
         });
     }
@@ -83,7 +83,7 @@ export async function getOrInitNodeInteractive(databasePath: string) {
             message: `Enter join-cluster token for ${domainPrefix}:`,
         });
         const nodeId = await JoinCluster(privateKeyPEM, domainPrefix, token);
-        await store.setNodeSettings({
+        store.setNodeSettings({
             nodeId,
             domainPrefix,
         });

@@ -377,11 +377,10 @@ export async function GetAllInterfaceStates(namespace: string | undefined) {
     const rawResult = await sudoCallOutput(
         nsWrap(namespace, ["ip", "-j", "addr", "show"])
     );
-    const jResult = JSON.parse(rawResult);
 
     return _ipAddrSchema
         .array()
-        .parse(jResult)
+        .parse(JSON.parse(rawResult))
         .map((s) => convertInterfaceState(s));
 }
 
@@ -389,9 +388,8 @@ export async function GetInterfaceState(namespace: string, name: string) {
     const rawResult = await sudoCallOutput(
         nsWrap(namespace, ["ip", "-j", "addr", "show", name])
     );
-    const jResult = JSON.parse(rawResult);
 
-    const result = _ipAddrSchema.array().parse(jResult);
+    const result = _ipAddrSchema.array().parse(JSON.parse(rawResult));
     if (result.length === 0) {
         throw new Error(`Interface ${name} not found`);
     }

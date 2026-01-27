@@ -135,11 +135,7 @@ export class ConfigStore extends BaseSQLite {
         return value;
     }
 
-    private async _setKey(
-        key: string,
-        value: string | number,
-        ttlSeconds?: number
-    ) {
+    private _setKey(key: string, value: string | number, ttlSeconds?: number) {
         const useTTL =
             ttlSeconds !== undefined
                 ? Math.floor((Date.now() + ttlSeconds * 1000) / 1000)
@@ -167,7 +163,7 @@ export class ConfigStore extends BaseSQLite {
         this._deleteKey(`underlay-worker-${ifname}`);
     }
 
-    async setLocalUnderlayState(ifname: string, state: LocalUnderlayState) {
+    setLocalUnderlayState(ifname: string, state: LocalUnderlayState) {
         this._setKey(`underlay-worker-${ifname}`, JSON.stringify(state));
     }
 }

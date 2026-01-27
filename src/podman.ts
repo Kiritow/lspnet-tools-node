@@ -15,14 +15,13 @@ async function podmanListContainers() {
         "-a",
         "--format=json",
     ]);
-    const jresult = JSON.parse(result);
     return z
         .object({
             Id: z.string(),
             Names: z.string().array(),
         })
         .array()
-        .parse(jresult);
+        .parse(JSON.parse(result));
 }
 
 async function inspectContainer(containerIdOrName: string) {
@@ -32,7 +31,6 @@ async function inspectContainer(containerIdOrName: string) {
         "inspect",
         containerIdOrName,
     ]);
-    const jresult = JSON.parse(result);
     const parsedResult = z
         .object({
             Id: z.string(),
@@ -44,7 +42,7 @@ async function inspectContainer(containerIdOrName: string) {
             }),
         })
         .array()
-        .parse(jresult);
+        .parse(JSON.parse(result));
 
     if (parsedResult.length === 0) {
         return undefined;
@@ -74,7 +72,9 @@ async function tryStopContainerFromSystemd(unitName: string) {
         await sudoCallOutput(["systemctl", "stop", unitName]);
     } catch (e) {
         console.error(e);
-        logger.warn(`failed to stop systemd service ${unitName}: ${e}`);
+        logger.warn(
+            `failed to stop systemd service ${unitName}: ${e instanceof Error ? e.message : String(e)}`
+        );
     }
 }
 

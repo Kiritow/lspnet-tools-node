@@ -1,5 +1,5 @@
 import assert from "node:assert";
-import { Command } from "commander";
+import { Command } from "@commander-js/extra-typings";
 import { getOrInitNodeInteractive } from "./cli-api";
 import { ServiceMain } from "./service";
 
@@ -27,7 +27,7 @@ program
     .command("run")
     .description("Run the node program")
     .requiredOption("-d, --database <path>", "Path to database file")
-    .action(async (options) => {
+    .action((options) => {
         const database = options.database;
         assert(
             database !== undefined && typeof database === "string",

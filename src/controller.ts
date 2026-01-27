@@ -156,7 +156,7 @@ export class ControlAgent {
     }
 
     async doSyncWireGuardKeys(atLeast: number): Promise<void> {
-        const keys = await this.store.getAllWireGuardKeys();
+        const keys = this.store.getAllWireGuardKeys();
         if (keys.length < atLeast) {
             logger.info(
                 `${keys.length} WireGuard keys found, ${atLeast - keys.length} more needed, generating...`
@@ -164,7 +164,7 @@ export class ControlAgent {
             for (let i = keys.length; i < atLeast; i++) {
                 const { privateKey, publicKey } =
                     await generateNewWireGuardKeyPair();
-                await this.store.createWireGuardKey(privateKey, publicKey);
+                this.store.createWireGuardKey(privateKey, publicKey);
             }
 
             return await this.doSyncWireGuardKeys(atLeast);
@@ -354,7 +354,7 @@ export class ControlAgent {
             `Removing underlay worker ${state.unit_name} for interface ${ifname}...`
         );
         await StopSystemdServiceBestEffort(`${state.unit_name}.service`);
-        await this.store.deleteLocalUnderlayState(ifname);
+        this.store.deleteLocalUnderlayState(ifname);
     }
 
     async doSyncCreateLocalUnderlay(
@@ -388,7 +388,7 @@ export class ControlAgent {
                     udpTTL: 120,
                 });
 
-                await this.store.setLocalUnderlayState(ifname, {
+                this.store.setLocalUnderlayState(ifname, {
                     unit_name: unitName,
                     mode: "client",
                     listen_port: remoteGostClientConfig.listen_port,
@@ -416,7 +416,7 @@ export class ControlAgent {
                     listenPort: remoteGostServerConfig.listen_port,
                     targetPort: wgState.listen,
                 });
-                await this.store.setLocalUnderlayState(ifname, {
+                this.store.setLocalUnderlayState(ifname, {
                     unit_name: unitName,
                     mode: "server",
                     listen_port: remoteGostServerConfig.listen_port,
@@ -428,8 +428,7 @@ export class ControlAgent {
 
     async doSyncPeerUnderlay(nodeSettings: NodeSettings, peer: RemotePeerInfo) {
         const ifname = `${nodeSettings.namespace}-${peer.id}`;
-        const localUnderlayState =
-            await this.store.getLocalUnderlayState(ifname);
+        const localUnderlayState = this.store.getLocalUnderlayState(ifname);
         const remoteUnderlay = peer.extra?.underlay;
 
         if (localUnderlayState === undefined && remoteUnderlay === undefined) {
@@ -533,7 +532,7 @@ export class ControlAgent {
         nodeSettings: NodeSettings,
         remotePeers: RemotePeerInfo[]
     ) {
-        const localWGKeys = await this.store.getAllWireGuardKeys();
+        const localWGKeys = this.store.getAllWireGuardKeys();
         const localWGKeyMap = new Map(
             localWGKeys.map((kp) => [kp.public, kp.private])
         ); // public -> private
@@ -809,7 +808,7 @@ export class ControlAgent {
     }
 
     async doSyncOnce() {
-        const nodeSettings = await this.store.getNodeSettings();
+        const nodeSettings = this.store.getNodeSettings();
         assert(nodeSettings !== undefined, "Node settings not configured");
         await EnsureNetNs(nodeSettings.namespace);
         await EnsureIPTables(nodeSettings.namespace);
