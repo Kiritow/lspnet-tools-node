@@ -227,3 +227,7 @@ export function readableZodError<T>(err: z.ZodError<T>): string {
         })
         .join("; ");
 }
+
+export function isEmptyString(s: string | undefined): s is undefined | "" {
+    return s === undefined ? true : s.trim() === "";
+}

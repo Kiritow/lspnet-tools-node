@@ -11,6 +11,7 @@ import {
     checkedCallOutput,
     formatTempDirPath,
     formatUnitname,
+    isEmptyString,
     nsWrap,
     resolveEndpoint,
     simpleCall,
@@ -210,7 +211,7 @@ export class ControlAgent {
             console.error(e);
         }
 
-        if (state !== undefined && remoteConfig.vethCIDR === undefined) {
+        if (state !== undefined && isEmptyString(remoteConfig.vethCIDR)) {
             logger.info(`Removing veth interface...`);
             await tryDestroyDevice("", `${nodeSettings.namespace}-veth0`);
             const rules = await GetAllIPTablesRules();
@@ -268,7 +269,7 @@ export class ControlAgent {
             return;
         }
 
-        if (state === undefined && remoteConfig.vethCIDR !== undefined) {
+        if (state === undefined && !isEmptyString(remoteConfig.vethCIDR)) {
             logger.info(`Creating veth interface...`);
             await CreateVethDevice(
                 nodeSettings.namespace,
