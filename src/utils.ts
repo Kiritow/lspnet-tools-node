@@ -14,7 +14,7 @@ export function sudoWrap(args: string[]) {
 }
 
 export function nsWrap(namespace: string | undefined, args: string[]) {
-    if (namespace !== undefined && namespace !== "") {
+    if (!isEmptyString(namespace)) {
         return ["ip", "netns", "exec", namespace].concat(args);
     }
 
@@ -97,7 +97,7 @@ export async function simpleCall(args: string[], writeInput?: Buffer) {
                 stderr += `${chunk}`;
             }
         });
-        child.on("exit", (code, signal) => {
+        child.on("close", (code, signal) => {
             if (code !== null) {
                 return resolve({ code, stdout, stderr });
             }
@@ -183,26 +183,6 @@ export function withDefaultNumber(n: number | undefined, def: number) {
     }
 
     return n;
-}
-
-class _ZeroableString {
-    constructor(public value: string | undefined) {}
-
-    or(defaultValue: string | _ZeroableString): _ZeroableString {
-        if (this.value !== undefined && this.value !== "") {
-            return this;
-        }
-
-        if (defaultValue instanceof _ZeroableString) {
-            return defaultValue;
-        }
-
-        return new _ZeroableString(defaultValue);
-    }
-}
-
-export function ZeroableString(value: string | undefined) {
-    return new _ZeroableString(value);
 }
 
 export async function sleep(ms: number) {
