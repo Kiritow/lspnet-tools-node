@@ -8,6 +8,7 @@ import {
     isEmptyString,
     nsWrap,
     resolveEndpoint,
+    sleep,
     sudoCall,
     sudoCallOutput,
 } from "./utils";
@@ -205,9 +206,13 @@ export async function GetAllLinks(namespace: string) {
     try {
         jResult = JSON.parse(rawResult);
     } catch (err) {
-        console.error(err);
-        logger.error("GetAllLinks: get json failed, retry in 3000ms...");
-        await new Promise((resolve) => setTimeout(resolve, 3000));
+        if (!(err instanceof SyntaxError)) {
+            // non-retryable error
+            throw err;
+        }
+
+        logger.warn("GetAllLinks: get json failed, retry in 3000ms...");
+        await sleep(3000);
 
         const rawResult2 = await sudoCallOutput(
             nsWrap(namespace, ["ip", "-j", "link"])
@@ -396,11 +401,15 @@ export async function GetAllInterfaceStates(namespace: string | undefined) {
     try {
         jResult = JSON.parse(rawResult);
     } catch (err) {
-        console.error(err);
-        logger.error(
+        if (!(err instanceof SyntaxError)) {
+            // non-retryable error
+            throw err;
+        }
+
+        logger.warn(
             "GetAllInterfaceStates: get json failed, retry in 3000ms..."
         );
-        await new Promise((resolve) => setTimeout(resolve, 3000));
+        await sleep(3000);
 
         const rawResult2 = await sudoCallOutput(
             nsWrap(namespace, ["ip", "-j", "address", "show"])
@@ -416,20 +425,24 @@ export async function GetAllInterfaceStates(namespace: string | undefined) {
 
 export async function GetInterfaceState(namespace: string, name: string) {
     const rawResult = await sudoCallOutput(
-        nsWrap(namespace, ["ip", "-j", "address", "show", name])
+        nsWrap(namespace, ["ip", "-j", "address", "show", "dev", name])
     );
     let jResult: unknown;
     try {
         jResult = JSON.parse(rawResult);
     } catch (err) {
-        console.error(err);
-        logger.error(
+        if (!(err instanceof SyntaxError)) {
+            // non-retryable error
+            throw err;
+        }
+
+        logger.warn(
             `GetInterfaceState: get json for interface ${name} failed, retry in 3000ms...`
         );
-        await new Promise((resolve) => setTimeout(resolve, 3000));
+        await sleep(3000);
 
         const rawResult2 = await sudoCallOutput(
-            nsWrap(namespace, ["ip", "-j", "address", "show", name])
+            nsWrap(namespace, ["ip", "-j", "address", "show", "dev", name])
         );
         jResult = JSON.parse(rawResult2);
     }
