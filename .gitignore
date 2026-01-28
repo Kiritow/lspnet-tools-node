@@ -12,3 +12,5 @@ static/
 dist/
 bin/
 local/
+
+src/version.ts

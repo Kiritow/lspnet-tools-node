@@ -3,8 +3,9 @@
   "version": "1.0.0",
   "main": "dist/index.js",
   "scripts": {
-    "build": "npm run eslint && rm -rf dist/ && tsc && tsc-alias",
-    "build:tsup": "npm run eslint && rm -rf dist/ && tsc && tsup --sourcemap",
+    "stamp": "echo \"export const GIT_COMMIT_HASH = \\\"$(git rev-parse HEAD)\\\";\" > src/version.ts",
+    "build": "npm run stamp && npm run eslint && rm -rf dist/ && tsc && tsc-alias",
+    "build:tsup": "npm run stamp && npm run eslint && rm -rf dist/ && tsc && tsup --sourcemap",
     "eslint": "eslint -c .eslintrc.js"
   },
   "keywords": [],

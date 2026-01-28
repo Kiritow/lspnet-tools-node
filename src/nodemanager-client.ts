@@ -4,6 +4,7 @@ import { fetch } from "undici";
 import z from "zod";
 import { NodeSettings } from "./config-store";
 import { PrivateKeyWrapper } from "./pki";
+import { GIT_COMMIT_HASH } from "./version";
 
 export interface NodeRouterInfo {
     router_id: string;
@@ -155,6 +156,7 @@ export class NodeManagerClient {
                     "X-Client-Id": this.privateKey.getKeyHash(),
                     "X-Client-Nonce": nonce,
                     "X-Client-Sign": signature,
+                    "X-Client-Version": GIT_COMMIT_HASH.substring(0, 8),
                 },
             }
         );
@@ -182,6 +184,7 @@ export class NodeManagerClient {
                 "X-Client-Id": this.privateKey.getKeyHash(),
                 "X-Client-Nonce": nonce,
                 "X-Client-Sign": signature,
+                "X-Client-Version": GIT_COMMIT_HASH.substring(0, 8),
                 "Content-Type": "application/json",
             },
             body: JSON.stringify(data),
