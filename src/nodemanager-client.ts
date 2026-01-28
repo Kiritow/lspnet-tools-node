@@ -1,3 +1,4 @@
+import dns from "node:dns";
 import crypto from "node:crypto";
 import { fetch } from "undici";
 import z from "zod";
@@ -133,6 +134,9 @@ export class NodeManagerClient {
     constructor(nodeConfig: NodeSettings) {
         this.nodeSettings = nodeConfig;
         this.privateKey = new PrivateKeyWrapper(nodeConfig.privateKey);
+
+        console.log(`dns.setDefaultResultOrder ipv4first`);
+        dns.setDefaultResultOrder("ipv4first");
     }
 
     async get(url: string, params?: Record<string, string>): Promise<unknown> {
