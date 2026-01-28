@@ -4,7 +4,13 @@ import assert from "node:assert";
 import z from "zod";
 
 import { logger } from "./common";
-import { nsWrap, resolveEndpoint, sudoCall, sudoCallOutput } from "./utils";
+import {
+    isEmptyString,
+    nsWrap,
+    resolveEndpoint,
+    sudoCall,
+    sudoCallOutput,
+} from "./utils";
 import { GetAllAddressFromVethLinkCIDR } from "./shared-utils";
 import { AddressV4Info, parseIPAddr } from "./ip-addr";
 
@@ -57,7 +63,7 @@ export async function AssignWireGuardDevice(
 
         if (options.peerPublic !== undefined) {
             args.push("peer", options.peerPublic);
-            if (options.endpoint) {
+            if (!isEmptyString(options.endpoint)) {
                 const resolvedEndpoint = await resolveEndpoint(
                     options.endpoint
                 );
@@ -73,10 +79,10 @@ export async function AssignWireGuardDevice(
                     );
                 }
             }
-            if (options.keepalive) {
+            if (options.keepalive !== undefined) {
                 args.push("persistent-keepalive", `${options.keepalive}`);
             }
-            if (options.allowedIPs !== undefined) {
+            if (!isEmptyString(options.allowedIPs)) {
                 args.push("allowed-ips", options.allowedIPs);
             }
         }
