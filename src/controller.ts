@@ -703,7 +703,7 @@ export class ControlAgent {
             const ifname = `${nodeSettings.namespace}-${peer.id}`;
             ospfAreaConfig["0"][ifname] = {
                 area: 0,
-                cost: costMap.get(ifname) ?? 1000,
+                cost: Math.floor(costMap.get(ifname) ?? 1000),
                 type: "ptp",
                 // auth: ...
             };
