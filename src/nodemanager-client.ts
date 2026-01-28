@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import axios from "axios";
+import { fetch } from "undici";
 import z from "zod";
 import { NodeSettings } from "./config-store";
 import { PrivateKeyWrapper } from "./pki";
@@ -143,9 +143,10 @@ export class NodeManagerClient {
             .sign(Buffer.from(signData))
             .toString("hex");
 
-        const res = await axios.get(
+        const res = await fetch(
             `${this.nodeSettings.domainPrefix}${url}?${queryString}`,
             {
+                method: "GET",
                 headers: {
                     "X-Client-Id": this.privateKey.getKeyHash(),
                     "X-Client-Nonce": nonce,
@@ -153,13 +154,15 @@ export class NodeManagerClient {
                 },
             }
         );
+
         if (res.status !== 200) {
+            const body = await res.text();
             throw new Error(
-                `Failed to get data from ${url}: ${res.status} ${res.statusText} ${JSON.stringify(res.data)}`
+                `Failed to get data from ${url}: status=${res.status}(${res.statusText}) body=${body}`
             );
         }
 
-        return res.data as unknown;
+        return await res.json();
     }
 
     async post(url: string, data?: Record<string, unknown>): Promise<unknown> {
@@ -169,25 +172,25 @@ export class NodeManagerClient {
             .sign(Buffer.from(signData))
             .toString("hex");
 
-        const res = await axios.post(
-            `${this.nodeSettings.domainPrefix}${url}`,
-            data,
-            {
-                headers: {
-                    "X-Client-Id": this.privateKey.getKeyHash(),
-                    "X-Client-Nonce": nonce,
-                    "X-Client-Sign": signature,
-                },
-            }
-        );
+        const res = await fetch(`${this.nodeSettings.domainPrefix}${url}`, {
+            method: "POST",
+            headers: {
+                "X-Client-Id": this.privateKey.getKeyHash(),
+                "X-Client-Nonce": nonce,
+                "X-Client-Sign": signature,
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify(data),
+        });
 
         if (res.status !== 200) {
+            const body = await res.text();
             throw new Error(
-                `Failed to post data to ${url}: ${res.status} ${res.statusText} ${JSON.stringify(res.data)}`
+                `Failed to post data to ${url}: status=${res.status}(${res.statusText}) body=${body}`
             );
         }
 
-        return res.data as unknown;
+        return await res.json();
     }
 
     async getNodeInfo() {
@@ -276,28 +279,31 @@ export async function JoinCluster(
         console.warn("Warning: Joining cluster over non-HTTPS connection");
     }
 
-    const res = await axios.post(
-        `${useDomainPrefix}/api/v1/node/join`,
-        {
+    const res = await fetch(`${useDomainPrefix}/api/v1/node/join`, {
+        method: "POST",
+        body: JSON.stringify({
             token,
             name: nodeName ?? crypto.randomUUID(),
             publicSignKey: key.getPublicKeyPEM(),
+        }),
+        headers: {
+            "Content-Type": "application/json",
         },
-        {
-            validateStatus: () => true, // do not throw on non-200 status
-        }
-    );
+    });
+
     if (res.status !== 200) {
+        const body = await res.text();
         throw new Error(
-            `Failed to join cluster: ${res.status} ${res.statusText} ${JSON.stringify(res.data)}`
+            `Failed to join cluster: status=${res.status}(${res.statusText}) body=${body}`
         );
     }
 
+    const data = await res.json();
     const { id: nodeId } = z
         .object({
             id: z.number(),
         })
-        .parse(res.data);
+        .parse(data);
 
     return nodeId;
 }
