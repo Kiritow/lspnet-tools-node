@@ -676,16 +676,19 @@ export class ControlAgent {
             if (peer.extra?.ospf?.ping) {
                 toPingInterfaces.push(ifname);
             }
-            costMap.set(ifname, peer.extra?.ospf?.cost ?? 500);
         }
         const pingResultMap = await CalculateMultiplePings(
             nodeSettings.namespace,
             toPingInterfaces
         );
-        for (const [ifname, pingMs] of pingResultMap.entries()) {
-            if (pingMs !== undefined && costMap.has(ifname)) {
-                costMap.set(ifname, Math.max(1, Math.floor(pingMs)));
+        for (const peer of remotePeers) {
+            const ifname = `${nodeSettings.namespace}-${peer.id}`;
+            let cost = peer.extra?.ospf?.cost ?? 1000;
+            const offset = peer.extra?.ospf?.offset ?? 0;
+            if (pingResultMap.has(ifname)) {
+                cost = pingResultMap.get(ifname)!;
             }
+            costMap.set(ifname, Math.min(Math.max(1, cost + offset), 65535));
         }
 
         const ospfAreaConfig: Record<
@@ -700,7 +703,7 @@ export class ControlAgent {
             const ifname = `${nodeSettings.namespace}-${peer.id}`;
             ospfAreaConfig["0"][ifname] = {
                 area: 0,
-                cost: costMap.get(ifname) ?? 500,
+                cost: costMap.get(ifname) ?? 1000,
                 type: "ptp",
                 // auth: ...
             };
