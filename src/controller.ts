@@ -701,9 +701,16 @@ export class ControlAgent {
 
         for (const peer of remotePeers) {
             const ifname = `${nodeSettings.namespace}-${peer.id}`;
+            let useCost = costMap.get(ifname);
+            if (useCost === undefined || !Number.isFinite(useCost)) {
+                useCost = 1000;
+            } else {
+                useCost = Math.floor(useCost);
+            }
+
             ospfAreaConfig["0"][ifname] = {
                 area: 0,
-                cost: Math.floor(costMap.get(ifname) ?? 1000),
+                cost: useCost,
                 type: "ptp",
                 // auth: ...
             };
