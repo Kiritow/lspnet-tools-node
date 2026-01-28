@@ -21,7 +21,7 @@ export async function CreateWireGuardDevice(
     }
 
     await sudoCall(
-        nsWrap(namespace, ["ip", "addr", "add", address, "dev", name])
+        nsWrap(namespace, ["ip", "address", "add", address, "dev", name])
     );
     await sudoCall(
         nsWrap(namespace, ["ip", "link", "set", "dev", name, "mtu", `${mtu}`])
@@ -120,12 +120,12 @@ export async function CreateVethDevice(
 
     const [vethAddress, vethPeerAddress] =
         GetAllAddressFromVethLinkCIDR(vethNetwork);
-    await sudoCall(["ip", "addr", "add", vethAddress, "dev", hostName]);
+    await sudoCall(["ip", "address", "add", vethAddress, "dev", hostName]);
     await sudoCall([
         "ip",
         "-n",
         namespace,
-        "addr",
+        "address",
         "add",
         vethPeerAddress,
         "dev",
@@ -142,7 +142,7 @@ export async function CreateDummyDevice(
     mtu: number
 ) {
     await sudoCall(["ip", "link", "add", name, "type", "dummy"]);
-    await sudoCall(["ip", "addr", "add", "dev", name, address]);
+    await sudoCall(["ip", "address", "add", "dev", name, address]);
     await sudoCall(["ip", "link", "set", name, "mtu", `${mtu}`]);
     await sudoCall(["ip", "link", "set", name, "up"]);
 }
@@ -186,7 +186,7 @@ export async function CreateGREDevice(
     }
 
     await sudoCall(callArgs);
-    await sudoCall(["ip", "addr", "add", "dev", name, params.address]);
+    await sudoCall(["ip", "address", "add", "dev", name, params.address]);
     await sudoCall(["ip", "link", "set", "dev", name, "mtu", `${params.mtu}`]);
     await sudoCall(["ip", "link", "set", "dev", name, "up"]);
 }
@@ -384,7 +384,7 @@ function convertInterfaceState(s: _ipAddrSchema): InterfaceState {
 
 export async function GetAllInterfaceStates(namespace: string | undefined) {
     const rawResult = await sudoCallOutput(
-        nsWrap(namespace, ["ip", "-j", "addr", "show"])
+        nsWrap(namespace, ["ip", "-j", "address", "show"])
     );
     let jResult: unknown;
     try {
@@ -397,7 +397,7 @@ export async function GetAllInterfaceStates(namespace: string | undefined) {
         await new Promise((resolve) => setTimeout(resolve, 3000));
 
         const rawResult2 = await sudoCallOutput(
-            nsWrap(namespace, ["ip", "-j", "addr", "show"])
+            nsWrap(namespace, ["ip", "-j", "address", "show"])
         );
         jResult = JSON.parse(rawResult2);
     }
@@ -410,7 +410,7 @@ export async function GetAllInterfaceStates(namespace: string | undefined) {
 
 export async function GetInterfaceState(namespace: string, name: string) {
     const rawResult = await sudoCallOutput(
-        nsWrap(namespace, ["ip", "-j", "addr", "show", name])
+        nsWrap(namespace, ["ip", "-j", "address", "show", name])
     );
     let jResult: unknown;
     try {
@@ -423,7 +423,7 @@ export async function GetInterfaceState(namespace: string, name: string) {
         await new Promise((resolve) => setTimeout(resolve, 3000));
 
         const rawResult2 = await sudoCallOutput(
-            nsWrap(namespace, ["ip", "-j", "addr", "show", name])
+            nsWrap(namespace, ["ip", "-j", "address", "show", name])
         );
         jResult = JSON.parse(rawResult2);
     }
