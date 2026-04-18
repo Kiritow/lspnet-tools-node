@@ -234,6 +234,7 @@ export class NodeManagerClient {
                     ...rest,
                     extra: pExtra,
                 };
+                // eslint-disable-next-line @typescript-eslint/no-unused-vars
             } catch (e) {
                 return {
                     ...rest,

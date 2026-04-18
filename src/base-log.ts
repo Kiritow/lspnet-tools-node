@@ -45,6 +45,7 @@ function parseError(err: Error, skip: number) {
             lineNumber: parseInt(lineMatch[3], 10),
             columnNumber: parseInt(lineMatch[4], 10),
         };
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
     } catch (e) {
         return undefined;
     }
