@@ -1,4 +1,5 @@
 import path from "node:path";
+import { inspect } from "node:util";
 import {
     createLogger,
     format,
@@ -6,8 +7,6 @@ import {
     Logger as WinstonLogger,
 } from "winston";
 import dayjs from "dayjs";
-
-const loggerMaps = new Map();
 
 const stackReg = /^(?:\s*)at (?:(.+) \()?(?:([^(]+?):(\d+):(\d+))\)?$/;
 
@@ -125,50 +124,60 @@ export class Logger {
         }
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    getMessage(level: string, ...args: any[]) {
+    getMessage(level: string, ...args: unknown[]) {
         const transArgs = args.map((a) => {
-            if (
-                typeof a == "object" &&
-                !(a.stack != null && a.message != null)
-            ) {
-                const s = JSON.stringify(a);
-                if (s != "{}") {
-                    return s;
+            switch (typeof a) {
+                case "undefined":
+                    return "undefined";
+                case "string":
+                    return a;
+                case "number":
+                case "boolean":
+                case "symbol":
+                case "bigint":
+                    return a.toString();
+                case "function":
+                    return inspect(a);
+                case "object": {
+                    if (a === null) return "null";
+
+                    if (a instanceof Error) {
+                        return inspect(a);
+                    }
+
+                    return JSON.stringify(a, (_, v: unknown) =>
+                        typeof v === "bigint" ? v.toString() : v
+                    );
                 }
             }
-
-            return a;
         });
         return `${dayjs().format("YYYY-MM-DD HH:mm:ss")} ${lineNumber(2)} [${level.toUpperCase()}] (${process.pid}) ${transArgs.join(" ")}`;
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    debug(...args: any[]) {
+    debug(...args: unknown[]) {
         this._logger.debug(this.getMessage("debug", ...args));
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    info(...args: any[]) {
+    info(...args: unknown[]) {
         this._logger.info(this.getMessage("info", ...args));
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    warn(...args: any[]) {
+    warn(...args: unknown[]) {
         this._logger.warn(this.getMessage("warn", ...args));
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    error(...args: any[]) {
+    error(...args: unknown[]) {
         this._logger.error(this.getMessage("error", ...args));
     }
 }
+
+const loggerMaps = new Map<string, Logger>();
 
 export default function getOrCreateLogger(
     name: string,
     options?: LoggerOptions
 ): Logger {
-    if (loggerMaps.has(name)) return loggerMaps.get(name);
+    if (loggerMaps.has(name)) return loggerMaps.get(name)!;
 
     const l = new Logger(
         Object.assign(
