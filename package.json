@@ -6,23 +6,26 @@
     "stamp": "echo \"export const GIT_COMMIT_HASH = \\\"$(git rev-parse HEAD)\\\";\" > src/version.ts",
     "build": "npm run stamp && npm run eslint && rm -rf dist/ && tsc && tsc-alias",
     "build:tsup": "npm run stamp && npm run eslint && rm -rf dist/ && tsc && tsup --sourcemap",
-    "eslint": "eslint -c .eslintrc.js"
+    "eslint": "eslint -c eslint.config.ts src/"
   },
   "keywords": [],
   "author": "Kiritow",
   "license": "MIT",
   "description": "",
   "devDependencies": {
-    "@types/node": "^22.15.17",
-    "@typescript-eslint/eslint-plugin": "^6.8.0",
-    "eslint": "^8.51.0",
-    "eslint-config-prettier": "^9.0.0",
-    "eslint-plugin-prettier": "^5.0.1",
-    "prettier": "^3.0.3",
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^22.19.17",
+    "eslint": "^10.2.1",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.5",
+    "jiti": "^2.6.1",
+    "prettier": "^3.8.3",
+    "ts-node": "^10.9.2",
     "tsc-alias": "^1.8.16",
     "tsup": "^8.5.1",
     "tsx": "^4.19.4",
-    "typescript": "^5.8.3"
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.58.2"
   },
   "dependencies": {
     "@commander-js/extra-typings": "^14.0.0",
