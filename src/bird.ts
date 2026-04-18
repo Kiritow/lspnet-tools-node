@@ -135,7 +135,7 @@ export function formatBirdConfig(options: {
     disableLogging?: boolean; // default to false
     gitVersion?: string;
 }) {
-    const currentTime = dayjs().format("YYYY-MM-DD HH:mm:ss");
+    const currentTime = dayjs().format("YYYY-MM-DD HH:mm:ssZZ");
     const routerIdText =
         options.routerId !== undefined ? `router id ${options.routerId};` : "";
     const debugProtocolsText =
