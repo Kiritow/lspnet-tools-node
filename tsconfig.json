@@ -1,13 +1,13 @@
 {
     "compilerOptions": {
-        "module": "commonjs",
+        "module": "nodenext",
         "esModuleInterop": true,
         "target": "ES2022",
         // "experimentalDecorators": true,
-        "moduleResolution": "node",
+        "moduleResolution": "nodenext",
         "sourceMap": true,
+        "rootDir": "src",
         "outDir": "dist",
-        "baseUrl": "./src",
         "strict": true,
         "noImplicitAny": true,
         "strictNullChecks": true,
@@ -22,7 +22,7 @@
         ],
         "paths": {
             "@/*": [
-                "./*"
+                "./src/*"
             ]
         },
         "types": [
