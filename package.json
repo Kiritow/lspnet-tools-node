@@ -3,7 +3,9 @@
   "version": "1.0.0",
   "main": "dist/index.js",
   "scripts": {
-    "stamp": "echo \"export const GIT_COMMIT_HASH = \\\"$(git rev-parse HEAD)\\\";\" > src/version.ts",
+    "stamp:version": "echo \"export const GIT_COMMIT_HASH = \\\"$(git rev-parse HEAD)$(git diff-index --quiet HEAD -- || echo '-dirty')\\\";\" > src/version.ts",
+    "stamp:buildtime": "echo \"export const BUILD_TIME = \\\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\\\";\" >> src/version.ts",
+    "stamp": "npm run stamp:version && npm run stamp:buildtime",
     "build": "npm run stamp && npm run eslint && rm -rf dist/ && tsc && tsc-alias",
     "build:tsup": "npm run stamp && npm run eslint && rm -rf dist/ && tsc && tsup --sourcemap",
     "eslint": "eslint -c eslint.config.ts src/"

@@ -1,14 +1,18 @@
 import assert from "node:assert";
 import { Command } from "@commander-js/extra-typings";
+import dayjs from "dayjs";
 import { getOrInitNodeInteractive } from "./cli-api";
 import { ServiceMain } from "./service";
+import { GIT_COMMIT_HASH, BUILD_TIME } from "./version";
 
 const program = new Command();
 
 program
     .name("lspnet-tools-node")
     .description("LSPNet Tools NodeJS Version")
-    .version("0.0.1");
+    .version(
+        `${GIT_COMMIT_HASH} (Built at ${dayjs(BUILD_TIME).format("YYYY-MM-DD HH:mm:ssZZ")})`
+    );
 
 program
     .command("init")
