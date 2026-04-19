@@ -128,6 +128,14 @@ export type RemotePeerInfo = Omit<RemotePeerInfoRaw, "extra"> & {
     extra: RemotePeerExtra | undefined;
 };
 
+function getClientVersion() {
+    if (GIT_COMMIT_HASH.endsWith("-dirty")) {
+        return `${GIT_COMMIT_HASH.substring(0, 8)}-dirty`;
+    }
+
+    return GIT_COMMIT_HASH.substring(0, 8);
+}
+
 export class NodeManagerClient {
     private nodeSettings: NodeSettings;
     private privateKey: PrivateKeyWrapper;
@@ -156,7 +164,7 @@ export class NodeManagerClient {
                     "X-Client-Id": this.privateKey.getKeyHash(),
                     "X-Client-Nonce": nonce,
                     "X-Client-Sign": signature,
-                    "X-Client-Version": GIT_COMMIT_HASH.substring(0, 8),
+                    "X-Client-Version": getClientVersion(),
                 },
             }
         );
@@ -184,7 +192,7 @@ export class NodeManagerClient {
                 "X-Client-Id": this.privateKey.getKeyHash(),
                 "X-Client-Nonce": nonce,
                 "X-Client-Sign": signature,
-                "X-Client-Version": GIT_COMMIT_HASH.substring(0, 8),
+                "X-Client-Version": getClientVersion(),
                 "Content-Type": "application/json",
             },
             body: JSON.stringify(data),
