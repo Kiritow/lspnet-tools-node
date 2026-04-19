@@ -1,6 +1,6 @@
 import dns from "node:dns";
 import crypto from "node:crypto";
-import { fetch } from "undici";
+import { fetch, Agent as UndiciAgent } from "undici";
 import z from "zod";
 import { NodeSettings } from "./config-store";
 import { PrivateKeyWrapper } from "./pki";
@@ -139,10 +139,12 @@ function getClientVersion() {
 export class NodeManagerClient {
     private nodeSettings: NodeSettings;
     private privateKey: PrivateKeyWrapper;
+    private undiciAgent: UndiciAgent;
 
     constructor(nodeConfig: NodeSettings) {
         this.nodeSettings = nodeConfig;
         this.privateKey = new PrivateKeyWrapper(nodeConfig.privateKey);
+        this.undiciAgent = new UndiciAgent({ allowH2: true });
 
         console.log(`dns.setDefaultResultOrder ipv4first`);
         dns.setDefaultResultOrder("ipv4first");
@@ -166,6 +168,7 @@ export class NodeManagerClient {
                     "X-Client-Sign": signature,
                     "X-Client-Version": getClientVersion(),
                 },
+                dispatcher: this.undiciAgent,
             }
         );
 
@@ -196,6 +199,7 @@ export class NodeManagerClient {
                 "Content-Type": "application/json",
             },
             body: JSON.stringify(data),
+            dispatcher: this.undiciAgent,
         });
 
         if (res.status !== 200) {
