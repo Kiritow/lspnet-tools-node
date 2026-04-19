@@ -150,6 +150,16 @@ export class ConfigStore extends BaseSQLite {
         this.run("delete from simplekv where key=?", [key]);
     }
 
+    clearAllUnserlayState() {
+        const results = this.query(
+            "select key from simplekv where key like 'underlay-worker-%'"
+        );
+        const keys = z.object({ key: z.string() }).array().parse(results);
+        for (const { key } of keys) {
+            this._deleteKey(key);
+        }
+    }
+
     getLocalUnderlayState(ifname: string) {
         const v = this._getKey(`underlay-worker-${ifname}`);
         if (v === undefined) {

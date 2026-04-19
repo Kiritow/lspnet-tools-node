@@ -6,10 +6,31 @@ import { EnsureNetNs } from "./ensures";
 import { DumpAllWireGuardState, tryDestroyDevice } from "./device";
 import { ClearIPTables } from "./iptables";
 import { shutdownRouterContainer } from "./podman";
-import { NodeSettings } from "./config-store";
-import { sleep } from "./utils";
+import { ConfigStore, NodeSettings } from "./config-store";
+import { getAllLoadedSystemdServices, sleep, sudoCallOutput } from "./utils";
+import { logger } from "./common";
 
-async function cleanUpEverything(nodeSettings: NodeSettings) {
+async function stopServices(nodeSettings: NodeSettings) {
+    const allUnits = await getAllLoadedSystemdServices();
+    for (const unitName of allUnits) {
+        if (unitName.startsWith(`networktools-${nodeSettings.namespace}-`)) {
+            console.log(`Stopping systemd service ${unitName}...`);
+            try {
+                await sudoCallOutput(["systemctl", "stop", unitName]);
+            } catch (e) {
+                console.error(e);
+                logger.warn(
+                    `failed to stop systemd service ${unitName}: ${e instanceof Error ? e.message : String(e)}`
+                );
+            }
+        }
+    }
+}
+
+async function cleanUpEverything(
+    nodeSettings: NodeSettings,
+    store: ConfigStore
+) {
     console.log(`Cleaning up all configurations...`);
     await EnsureNetNs(nodeSettings.namespace);
     // stop all wireguard devices
@@ -28,6 +49,10 @@ async function cleanUpEverything(nodeSettings: NodeSettings) {
     console.log(`Stopping containers...`);
     await shutdownRouterContainer(nodeSettings.namespace, true);
 
+    console.log(`Stopping systemd services and clear states...`);
+    await stopServices(nodeSettings);
+    store.clearAllUnserlayState();
+
     console.log(`Cleanup completed.`);
 }
 
@@ -35,7 +60,7 @@ export async function ServiceMain(databasePath: string) {
     const { store } = await getOrInitNodeInteractive(databasePath);
     const nodeSettings = store.getNodeSettings();
     assert(nodeSettings !== undefined, "Node settings are not configured");
-    await cleanUpEverything(nodeSettings);
+    await cleanUpEverything(nodeSettings, store);
     await sleep(1000);
 
     console.log(`Starting main service loop...`);

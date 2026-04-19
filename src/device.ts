@@ -35,7 +35,7 @@ export async function CreateWireGuardDevice(
     );
 }
 
-export async function AssignWireGuardDevice(
+export async function UpdateWireGuardDevice(
     namespace: string,
     name: string,
     options: {
@@ -101,7 +101,7 @@ export async function AssignWireGuardDevice(
     }
 }
 
-export async function UpWireGuardDevice(namespace: string, name: string) {
+export async function LinkUpWireGuardDevice(namespace: string, name: string) {
     await sudoCall(nsWrap(namespace, ["ip", "link", "set", name, "up"]));
 }
 

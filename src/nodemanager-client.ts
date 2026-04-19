@@ -144,7 +144,11 @@ export class NodeManagerClient {
     constructor(nodeConfig: NodeSettings) {
         this.nodeSettings = nodeConfig;
         this.privateKey = new PrivateKeyWrapper(nodeConfig.privateKey);
-        this.undiciAgent = new UndiciAgent({ allowH2: true });
+        this.undiciAgent = new UndiciAgent({
+            allowH2: true,
+            headersTimeout: 5000,
+            bodyTimeout: 10000,
+        });
 
         console.log(`dns.setDefaultResultOrder ipv4first`);
         dns.setDefaultResultOrder("ipv4first");

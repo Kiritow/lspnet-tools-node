@@ -34,7 +34,7 @@ import {
 } from "./iptables";
 import { logger } from "./common";
 import {
-    AssignWireGuardDevice,
+    UpdateWireGuardDevice,
     CreateVethDevice,
     CreateWireGuardDevice,
     DumpAllWireGuardState,
@@ -42,7 +42,7 @@ import {
     GetInterfaceState,
     InterfaceState,
     tryDestroyDevice,
-    UpWireGuardDevice,
+    LinkUpWireGuardDevice,
     WireGuardState,
 } from "./device";
 import {
@@ -398,7 +398,7 @@ export class ControlAgent {
                 });
 
                 // Set wireguard endpoint to gost listener
-                await AssignWireGuardDevice(nodeSettings.namespace, ifname, {
+                await UpdateWireGuardDevice(nodeSettings.namespace, ifname, {
                     peerPublic: remotePeer.publicKey,
                     endpoint: `127.0.0.1:${remoteGostClientConfig.listen_port}`,
                 });
@@ -487,6 +487,11 @@ export class ControlAgent {
                 );
                 needRecreate = true;
             }
+
+            await UpdateWireGuardDevice(nodeSettings.namespace, ifname, {
+                peerPublic: peer.publicKey,
+                endpoint: `127.0.0.1:${remoteUnderlay.config_gost_relay_client.listen_port}`,
+            });
         } else if (
             localUnderlayState.mode === "server" &&
             remoteUnderlay.provider === "gost_relay_server"
@@ -524,17 +529,10 @@ export class ControlAgent {
         const peerPublicKey = Object.keys(localState.peers)[0];
         const localPeerState = localState.peers[peerPublicKey];
         if (localPeerState.keepalive !== peer.keepalive) {
-            await sudoCall(
-                nsWrap(nodeSettings.namespace, [
-                    "wg",
-                    "set",
-                    ifname,
-                    "peer",
-                    peerPublicKey,
-                    "persistent-keepalive",
-                    `${peer.keepalive}`,
-                ])
-            );
+            await UpdateWireGuardDevice(nodeSettings.namespace, ifname, {
+                peerPublic: peerPublicKey,
+                keepalive: peer.keepalive,
+            });
         }
     }
 
@@ -567,7 +565,7 @@ export class ControlAgent {
                     peer.addressCIDR,
                     withDefaultNumber(peer.mtu, 1420)
                 );
-                await AssignWireGuardDevice(nodeSettings.namespace, ifname, {
+                await UpdateWireGuardDevice(nodeSettings.namespace, ifname, {
                     private: privateKey,
                     listenPort: peer.listenPort,
                     peerPublic: peer.peerPublicKey,
@@ -575,7 +573,7 @@ export class ControlAgent {
                     keepalive: peer.keepalive,
                     allowedIPs: "0.0.0.0/0",
                 });
-                await UpWireGuardDevice(nodeSettings.namespace, ifname);
+                await LinkUpWireGuardDevice(nodeSettings.namespace, ifname);
 
                 if (peer.listenPort !== 0) {
                     logger.info(
@@ -613,7 +611,7 @@ export class ControlAgent {
             );
             await this.doSyncPeerUnderlay(nodeSettings, peer);
             if (peer.extra?.underlay === undefined) {
-                // underlay is synced now, and remote does not have underlay, try syncing endpoints.
+                // no underlay, try syncing endpoints.
                 await this.doSyncPeerEndpoint(
                     nodeSettings,
                     peer,
