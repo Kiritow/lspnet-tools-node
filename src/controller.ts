@@ -489,7 +489,7 @@ export class ControlAgent {
             }
 
             await UpdateWireGuardDevice(nodeSettings.namespace, ifname, {
-                peerPublic: peer.publicKey,
+                peerPublic: peer.peerPublicKey,
                 endpoint: `127.0.0.1:${remoteUnderlay.config_gost_relay_client.listen_port}`,
             });
         } else if (
