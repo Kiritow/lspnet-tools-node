@@ -4,8 +4,11 @@ import prettierPlugin from "eslint-plugin-prettier";
 import prettierConfig from "eslint-config-prettier";
 
 export default [
-    js.configs.recommended,
+    {
+        ignores: ["dist/**", "node_modules/**"],
+    },
 
+    js.configs.recommended,
     ...tseslint.configs.recommended,
 
     {
@@ -19,7 +22,6 @@ export default [
         rules: {
             "prettier/prettier": "error",
         },
-        ignores: ["dist/**", "node_modules/**"],
     },
 
     prettierConfig,
