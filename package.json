@@ -7,7 +7,6 @@
     "stamp:buildtime": "echo \"export const BUILD_TIME = \\\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\\\";\" >> src/version.ts",
     "stamp": "npm run stamp:version && npm run stamp:buildtime",
     "build": "npm run stamp && npm run eslint && rm -rf dist/ && tsc && tsc-alias",
-    "build:tsup": "npm run stamp && npm run eslint && rm -rf dist/ && tsc && tsup --sourcemap",
     "eslint": "eslint -c eslint.config.ts src/"
   },
   "keywords": [],
@@ -22,10 +21,7 @@
     "eslint-plugin-prettier": "^5.5.5",
     "jiti": "^2.6.1",
     "prettier": "^3.8.3",
-    "ts-node": "^10.9.2",
     "tsc-alias": "^1.8.16",
-    "tsup": "^8.5.1",
-    "tsx": "^4.19.4",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.58.2"
   },
@@ -34,8 +30,8 @@
     "@inquirer/prompts": "^8.1.0",
     "commander": "^14.0.2",
     "dayjs": "^1.11.13",
-    "ip-address": "^10.0.1",
-    "undici": "^8.1.0",
+    "ip-address": "^10.5.0",
+    "undici": "^8.10.0",
     "winston": "^3.17.0",
     "zod": "^4.3.6"
   }
