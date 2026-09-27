@@ -13,6 +13,7 @@ import {
     formatUnitname,
     isEmptyString,
     nsWrap,
+    parseEndpoint,
     resolveEndpoint,
     simpleCall,
     StopSystemdServiceBestEffort,
@@ -28,6 +29,7 @@ import {
 import {
     EnsureIPTables,
     GetAllIPTablesRules,
+    SplitIPTablesRule,
     tryAppendIptablesRule,
     tryCheckIptablesRule,
     tryDeleteIptablesRule,
@@ -145,6 +147,33 @@ function routerInfoToNodeRouterInfo(routerInfo: RouterInfo): NodeRouterInfo {
     };
 }
 
+// Host of gost relay server as delivered (server_addr, or host of peer endpoint), before resolving.
+// Changes of connect IP are detected with it. Resolved IP is not compared,
+// otherwise DNS changes (e.g. round-robin) would recreate the relay again and again.
+function getGostRelayServerHost(serverAddr: string, peerEndpoint: string) {
+    if (!isEmptyString(serverAddr)) {
+        return serverAddr;
+    }
+
+    return parseEndpoint(peerEndpoint).host;
+}
+
+// INPUT rule accepting the wireguard listen port of a peer interface
+function formatPeerInputRuleArgs(ifname: string, port: number) {
+    return [
+        "-p",
+        "udp",
+        "--dport",
+        `${port}`,
+        "-j",
+        "ACCEPT",
+        "-m",
+        "comment",
+        "--comment",
+        `#peer_${ifname}#`,
+    ];
+}
+
 export class ControlAgent {
     private store: ConfigStore;
     private client: NodeManagerClient;
@@ -225,7 +254,7 @@ export class ControlAgent {
                         rule.includes("#local_veth#")
                     ) {
                         logger.info(`Removing iptables rule: ${rule}`);
-                        const parts = rule.split(" ").slice(2);
+                        const parts = SplitIPTablesRule(rule).slice(2);
                         await tryDeleteIptablesRule(
                             "nat",
                             `${nodeSettings.namespace}-POSTROUTING`,
@@ -243,7 +272,7 @@ export class ControlAgent {
                         rule.includes("#local_veth#")
                     ) {
                         logger.info(`Removing iptables rule: ${rule}`);
-                        const parts = rule.split(" ").slice(2);
+                        const parts = SplitIPTablesRule(rule).slice(2);
                         await tryDeleteIptablesRule(
                             "filter",
                             `${nodeSettings.namespace}-FORWARD`,
@@ -256,7 +285,7 @@ export class ControlAgent {
                         rule.includes("#local_veth#")
                     ) {
                         logger.info(`Removing iptables rule: ${rule}`);
-                        const parts = rule.split(" ").slice(2);
+                        const parts = SplitIPTablesRule(rule).slice(2);
                         await tryDeleteIptablesRule(
                             "filter",
                             `${nodeSettings.namespace}-INPUT`,
@@ -376,6 +405,10 @@ export class ControlAgent {
             case "gost_relay_client": {
                 const remoteGostClientConfig =
                     remoteUnderlay.config_gost_relay_client;
+                const serverHost = getGostRelayServerHost(
+                    remoteGostClientConfig.server_addr,
+                    remotePeer.endpoint
+                );
                 let serverIP = remoteGostClientConfig.server_addr;
                 if (isEmptyString(serverIP)) {
                     serverIP = (await resolveEndpoint(remotePeer.endpoint))
@@ -402,6 +435,7 @@ export class ControlAgent {
                     unit_name: unitName,
                     mode: "client",
                     listen_port: remoteGostClientConfig.listen_port,
+                    server_host: serverHost,
                     server_ip: serverIP,
                     server_port: remoteGostClientConfig.server_port,
                     username: remoteGostClientConfig.username,
@@ -440,6 +474,7 @@ export class ControlAgent {
                     unit_name: unitName,
                     mode: "server",
                     listen_port: remoteGostServerConfig.listen_port,
+                    target_port: wgState.listen,
                     username: remoteGostServerConfig.username,
                     password: remoteGostServerConfig.password,
                 });
@@ -507,11 +542,11 @@ export class ControlAgent {
                     remoteUnderlay.config_gost_relay_client.listen_port ||
                 localUnderlayState.server_port !==
                     remoteUnderlay.config_gost_relay_client.server_port ||
-                (!isEmptyString(
-                    remoteUnderlay.config_gost_relay_client.server_addr
-                ) &&
-                    localUnderlayState.server_ip !==
-                        remoteUnderlay.config_gost_relay_client.server_addr) ||
+                localUnderlayState.server_host !==
+                    getGostRelayServerHost(
+                        remoteUnderlay.config_gost_relay_client.server_addr,
+                        peer.endpoint
+                    ) ||
                 localUnderlayState.username !==
                     remoteUnderlay.config_gost_relay_client.username ||
                 localUnderlayState.password !==
@@ -532,9 +567,15 @@ export class ControlAgent {
             localUnderlayState.mode === "server" &&
             remoteUnderlay.provider === "gost_relay_server"
         ) {
+            // relay target must follow the wireguard listen port
+            const wgState = await DumpWireGuardState(
+                nodeSettings.namespace,
+                ifname
+            );
             if (
                 localUnderlayState.listen_port !==
                     remoteUnderlay.config_gost_relay_server.listen_port ||
+                localUnderlayState.target_port !== wgState.listen ||
                 localUnderlayState.username !==
                     remoteUnderlay.config_gost_relay_server.username ||
                 localUnderlayState.password !==
@@ -577,6 +618,36 @@ export class ControlAgent {
             await this.doSyncRemoveLocalUnderlay(ifname, localUnderlayState);
             await this.doSyncCreateLocalUnderlay(nodeSettings, peer, ifname);
         }
+    }
+
+    async doSyncPeerListenPort(
+        nodeSettings: NodeSettings,
+        peer: RemotePeerInfo,
+        ifname: string,
+        localState: WireGuardState
+    ) {
+        // 0 means any port (client side), keep the current one.
+        if (peer.listenPort === 0 || localState.listen === peer.listenPort) {
+            return;
+        }
+
+        logger.info(
+            `Listen port of interface ${ifname} changed: ${localState.listen} -> ${peer.listenPort}`
+        );
+        // move iptables rule first and wireguard last, so every step is retried next time if any of them failed.
+        await tryAppendIptablesRule(
+            "filter",
+            `${nodeSettings.namespace}-INPUT`,
+            formatPeerInputRuleArgs(ifname, peer.listenPort)
+        );
+        await tryDeleteIptablesRule(
+            "filter",
+            `${nodeSettings.namespace}-INPUT`,
+            formatPeerInputRuleArgs(ifname, localState.listen)
+        );
+        await UpdateWireGuardDevice(nodeSettings.namespace, ifname, {
+            listenPort: peer.listenPort,
+        });
     }
 
     async doSyncPeerEndpoint(
@@ -671,18 +742,7 @@ export class ControlAgent {
                     await tryAppendIptablesRule(
                         "filter",
                         `${nodeSettings.namespace}-INPUT`,
-                        [
-                            "-p",
-                            "udp",
-                            "--dport",
-                            `${peer.listenPort}`,
-                            "-j",
-                            "ACCEPT",
-                            "-m",
-                            "comment",
-                            "--comment",
-                            `#peer_${ifname}#`,
-                        ]
+                        formatPeerInputRuleArgs(ifname, peer.listenPort)
                     );
                 }
 
@@ -697,6 +757,13 @@ export class ControlAgent {
             // compare local state and remote state
             logger.info(
                 `WireGuard peer interface ${ifname} exists, checking...`
+            );
+            // before underlay: gost relay server follows the listen port
+            await this.doSyncPeerListenPort(
+                nodeSettings,
+                peer,
+                ifname,
+                localState
             );
             await this.doSyncPeerUnderlay(nodeSettings, peer);
             if (peer.extra?.underlay === undefined) {
@@ -735,7 +802,7 @@ export class ControlAgent {
                         rule.includes(`#peer_${ifname}#`)
                     ) {
                         logger.info(`Removing iptables rule: ${rule}`);
-                        const parts = rule.split(" ").slice(2);
+                        const parts = SplitIPTablesRule(rule).slice(2);
                         await tryDeleteIptablesRule(
                             "filter",
                             `${nodeSettings.namespace}-INPUT`,

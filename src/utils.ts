@@ -117,7 +117,8 @@ export async function simpleCall(args: string[], writeInput?: Buffer) {
     });
 }
 
-export async function resolveEndpoint(endpoint: string) {
+// split endpoint into host and port, without resolving
+export function parseEndpoint(endpoint: string) {
     if (endpoint.startsWith("[")) {
         // IPv6 literal address
         const host = endpoint.split("]")[0].substring(1);
@@ -127,15 +128,21 @@ export async function resolveEndpoint(endpoint: string) {
 
     const parts = endpoint.split(":");
     assert(parts.length === 2, `Invalid endpoint format: ${endpoint}`);
-    const endpointHost = parts[0];
-    const port = parseInt(parts[1], 10);
+    return { host: parts[0], port: parseInt(parts[1], 10), v6: false };
+}
 
-    const result = await dnsPromise.lookup(endpointHost, 4);
-    if (result.address !== endpointHost) {
-        logger.info(`endpoint ${endpointHost} resolved to ${result.address}`);
+export async function resolveEndpoint(endpoint: string) {
+    const parsed = parseEndpoint(endpoint);
+    if (parsed.v6) {
+        return parsed;
     }
 
-    return { host: result.address, port, v6: false };
+    const result = await dnsPromise.lookup(parsed.host, 4);
+    if (result.address !== parsed.host) {
+        logger.info(`endpoint ${parsed.host} resolved to ${result.address}`);
+    }
+
+    return { host: result.address, port: parsed.port, v6: false };
 }
 
 export async function getAllLoadedSystemdServices() {

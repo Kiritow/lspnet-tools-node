@@ -16,6 +16,7 @@ const _localUnderlayStateSchema = z.union([
         unit_name: z.string(),
         mode: z.literal("client"),
         listen_port: z.number(),
+        server_host: z.string(), // as delivered, before resolving
         server_ip: z.string(),
         server_port: z.number(),
         username: z.string().optional(),
@@ -25,6 +26,7 @@ const _localUnderlayStateSchema = z.union([
         unit_name: z.string(),
         mode: z.literal("server"),
         listen_port: z.number(),
+        target_port: z.number(), // wireguard listen port
         username: z.string().optional(),
         password: z.string().optional(),
     }),

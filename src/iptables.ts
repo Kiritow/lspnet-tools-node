@@ -223,3 +223,44 @@ export async function GetAllIPTablesRules() {
 
     return tableRules;
 }
+
+// Split a rule line of iptables-save into arguments.
+// iptables-save double-quotes values with special characters (e.g. "#peer_xxx#" comments) and escapes \ " ' inside them,
+// splitting by space would keep the quotes and the rule would never match in -C/-D.
+export function SplitIPTablesRule(rule: string) {
+    const args: string[] = [];
+    let current = "";
+    let inArg = false; // keep empty quoted value ""
+    let inQuote = false;
+    for (let i = 0; i < rule.length; i++) {
+        const c = rule[i];
+        if (inQuote) {
+            if (c === '"') {
+                inQuote = false;
+            } else if (c === "\\" && i + 1 < rule.length) {
+                i++;
+                current += rule[i];
+            } else {
+                current += c;
+            }
+        } else if (c === " ") {
+            if (inArg) {
+                args.push(current);
+                current = "";
+                inArg = false;
+            }
+        } else if (c === '"') {
+            inQuote = true;
+            inArg = true;
+        } else {
+            current += c;
+            inArg = true;
+        }
+    }
+
+    if (inArg) {
+        args.push(current);
+    }
+
+    return args;
+}
