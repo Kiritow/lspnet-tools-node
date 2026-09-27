@@ -118,6 +118,13 @@ const _remotePeerExtraSchema = z
                     password: z.string().optional(),
                 }),
             }),
+            // underlay is maintained by the node itself, wireguard endpoint points to the local connector.
+            z.object({
+                provider: z.literal("local"),
+                config_local: z.object({
+                    endpoint: z.string(),
+                }),
+            }),
         ]),
     })
     .partial();

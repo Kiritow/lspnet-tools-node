@@ -28,6 +28,11 @@ const _localUnderlayStateSchema = z.union([
         username: z.string().optional(),
         password: z.string().optional(),
     }),
+    // no worker, the local connector is maintained outside of this agent.
+    z.object({
+        mode: z.literal("local"),
+        endpoint: z.string(),
+    }),
 ]);
 
 export type LocalUnderlayState = z.infer<typeof _localUnderlayStateSchema>;

@@ -351,10 +351,17 @@ export class ControlAgent {
     }
 
     async doSyncRemoveLocalUnderlay(ifname: string, state: LocalUnderlayState) {
-        logger.info(
-            `Removing underlay worker ${state.unit_name} for interface ${ifname}...`
-        );
-        await StopSystemdServiceBestEffort(`${state.unit_name}.service`);
+        if (state.mode === "local") {
+            // local connector is maintained outside, nothing to stop.
+            logger.info(
+                `Removing local underlay ${state.endpoint} for interface ${ifname}...`
+            );
+        } else {
+            logger.info(
+                `Removing underlay worker ${state.unit_name} for interface ${ifname}...`
+            );
+            await StopSystemdServiceBestEffort(`${state.unit_name}.service`);
+        }
         this.store.deleteLocalUnderlayState(ifname);
     }
 
@@ -387,6 +394,8 @@ export class ControlAgent {
                     dstHost: serverIP,
                     dstPort: remoteGostClientConfig.server_port,
                     udpTTL: 120,
+                    username: remoteGostClientConfig.username,
+                    password: remoteGostClientConfig.password,
                 });
 
                 this.store.setLocalUnderlayState(ifname, {
@@ -395,11 +404,13 @@ export class ControlAgent {
                     listen_port: remoteGostClientConfig.listen_port,
                     server_ip: serverIP,
                     server_port: remoteGostClientConfig.server_port,
+                    username: remoteGostClientConfig.username,
+                    password: remoteGostClientConfig.password,
                 });
 
                 // Set wireguard endpoint to gost listener
                 await UpdateWireGuardDevice(nodeSettings.namespace, ifname, {
-                    peerPublic: remotePeer.publicKey,
+                    peerPublic: remotePeer.peerPublicKey,
                     endpoint: `127.0.0.1:${remoteGostClientConfig.listen_port}`,
                 });
                 return;
@@ -422,11 +433,32 @@ export class ControlAgent {
                 await StartGostTLSRelayServer(unitName, GetInstallDir(), {
                     listenPort: remoteGostServerConfig.listen_port,
                     targetPort: wgState.listen,
+                    username: remoteGostServerConfig.username,
+                    password: remoteGostServerConfig.password,
                 });
                 this.store.setLocalUnderlayState(ifname, {
                     unit_name: unitName,
                     mode: "server",
                     listen_port: remoteGostServerConfig.listen_port,
+                    username: remoteGostServerConfig.username,
+                    password: remoteGostServerConfig.password,
+                });
+                return;
+            }
+
+            case "local": {
+                // underlay is maintained by the node itself, only point wireguard endpoint to the local connector.
+                const endpoint = remoteUnderlay.config_local.endpoint;
+                logger.info(
+                    `Using local connector ${endpoint} as underlay for interface ${ifname}...`
+                );
+                await UpdateWireGuardDevice(nodeSettings.namespace, ifname, {
+                    peerPublic: remotePeer.peerPublicKey,
+                    endpoint,
+                });
+                this.store.setLocalUnderlayState(ifname, {
+                    mode: "local",
+                    endpoint,
                 });
                 return;
             }
@@ -451,6 +483,13 @@ export class ControlAgent {
 
         if (localUnderlayState !== undefined && remoteUnderlay === undefined) {
             // has underlay -> no underlay
+            if (localUnderlayState.mode !== "server") {
+                // wireguard endpoint still points to the underlay, restore it before removing (retry next time if failed)
+                await UpdateWireGuardDevice(nodeSettings.namespace, ifname, {
+                    peerPublic: peer.peerPublicKey,
+                    endpoint: peer.endpoint,
+                });
+            }
             await this.doSyncRemoveLocalUnderlay(ifname, localUnderlayState);
             return;
         }
@@ -479,7 +518,11 @@ export class ControlAgent {
                     remoteUnderlay.config_gost_relay_client.server_addr
                 ) &&
                     localUnderlayState.server_ip !==
-                        remoteUnderlay.config_gost_relay_client.server_addr)
+                        remoteUnderlay.config_gost_relay_client.server_addr) ||
+                localUnderlayState.username !==
+                    remoteUnderlay.config_gost_relay_client.username ||
+                localUnderlayState.password !==
+                    remoteUnderlay.config_gost_relay_client.password
             ) {
                 // config changed
                 logger.info(
@@ -498,7 +541,11 @@ export class ControlAgent {
         ) {
             if (
                 localUnderlayState.listen_port !==
-                remoteUnderlay.config_gost_relay_server.listen_port
+                    remoteUnderlay.config_gost_relay_server.listen_port ||
+                localUnderlayState.username !==
+                    remoteUnderlay.config_gost_relay_server.username ||
+                localUnderlayState.password !==
+                    remoteUnderlay.config_gost_relay_server.password
             ) {
                 // config changed
                 logger.info(
@@ -506,6 +553,25 @@ export class ControlAgent {
                 );
                 needRecreate = true;
             }
+        } else if (
+            localUnderlayState.mode === "local" &&
+            remoteUnderlay.provider === "local"
+        ) {
+            if (
+                localUnderlayState.endpoint !==
+                remoteUnderlay.config_local.endpoint
+            ) {
+                // config changed
+                logger.info(
+                    `Underlay config changed for interface ${ifname}, need recreate. Local: ${JSON.stringify(localUnderlayState)} Remote: ${JSON.stringify(remoteUnderlay)}`
+                );
+                needRecreate = true;
+            }
+
+            await UpdateWireGuardDevice(nodeSettings.namespace, ifname, {
+                peerPublic: peer.peerPublicKey,
+                endpoint: remoteUnderlay.config_local.endpoint,
+            });
         } else {
             // mode changed
             logger.info(
