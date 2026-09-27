@@ -482,14 +482,7 @@ export class ControlAgent {
         }
 
         if (localUnderlayState !== undefined && remoteUnderlay === undefined) {
-            // has underlay -> no underlay
-            if (localUnderlayState.mode !== "server") {
-                // wireguard endpoint still points to the underlay, restore it before removing (retry next time if failed)
-                await UpdateWireGuardDevice(nodeSettings.namespace, ifname, {
-                    peerPublic: peer.peerPublicKey,
-                    endpoint: peer.endpoint,
-                });
-            }
+            // has underlay -> no underlay, wireguard endpoint is restored by doSyncPeerEndpoint
             await this.doSyncRemoveLocalUnderlay(ifname, localUnderlayState);
             return;
         }
@@ -594,10 +587,40 @@ export class ControlAgent {
     ) {
         const peerPublicKey = Object.keys(localState.peers)[0];
         const localPeerState = localState.peers[peerPublicKey];
-        if (localPeerState.keepalive !== peer.keepalive) {
+        // keepalive 0 is shown as "off" in wg dump
+        if ((localPeerState.keepalive ?? 0) !== peer.keepalive) {
             await UpdateWireGuardDevice(nodeSettings.namespace, ifname, {
                 peerPublic: peerPublicKey,
                 keepalive: peer.keepalive,
+            });
+        }
+
+        // server side has no endpoint, it's learned from handshakes.
+        if (isEmptyString(peer.endpoint)) {
+            return;
+        }
+
+        // resolve every time, so changes of connect IP (or DDNS) are applied without restart.
+        let endpoint: string;
+        try {
+            const resolved = await resolveEndpoint(peer.endpoint);
+            endpoint = resolved.v6
+                ? `[${resolved.host}]:${resolved.port}`
+                : `${resolved.host}:${resolved.port}`;
+        } catch (e) {
+            logger.warn(
+                `Failed to resolve endpoint ${peer.endpoint} for interface ${ifname}, keep current endpoint: ${e instanceof Error ? e.message : String(e)}`
+            );
+            return;
+        }
+
+        if (localPeerState.endpoint !== endpoint) {
+            logger.info(
+                `Endpoint of interface ${ifname} changed: ${localPeerState.endpoint} -> ${endpoint}`
+            );
+            await UpdateWireGuardDevice(nodeSettings.namespace, ifname, {
+                peerPublic: peerPublicKey,
+                endpoint,
             });
         }
     }
@@ -693,6 +716,14 @@ export class ControlAgent {
             }
 
             logger.info(`Removing stale WireGuard peer interface ${ifname}...`);
+            // remove underlay first, once the interface is gone it won't be seen as stale again.
+            const localUnderlayState = this.store.getLocalUnderlayState(ifname);
+            if (localUnderlayState !== undefined) {
+                await this.doSyncRemoveLocalUnderlay(
+                    ifname,
+                    localUnderlayState
+                );
+            }
             await tryDestroyDevice(nodeSettings.namespace, ifname);
 
             const rules = await GetAllIPTablesRules();
