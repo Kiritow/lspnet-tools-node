@@ -1,6 +1,6 @@
 {
   "name": "lspnet-tools-node",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "main": "dist/index.js",
   "scripts": {
     "stamp:version": "echo \"export const GIT_COMMIT_HASH = \\\"$(git rev-parse HEAD)$(git diff-index --quiet HEAD -- || echo '-dirty')\\\";\" > src/version.ts",
