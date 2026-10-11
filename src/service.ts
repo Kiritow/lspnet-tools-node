@@ -1,7 +1,7 @@
 import assert from "node:assert";
-import { ControlAgent } from "@/controller";
-import { NodeManagerClient } from "@/nodemanager-client";
-import { getOrInitNodeInteractive } from "@/cli-api";
+import { ControlAgent } from "./controller";
+import { NodeManagerClient } from "./nodemanager-client";
+import { getOrInitNodeInteractive } from "./cli-api";
 import { EnsureNetNs } from "./ensures";
 import { DumpAllWireGuardState, tryDestroyDevice } from "./device";
 import { ClearIPTables } from "./iptables";

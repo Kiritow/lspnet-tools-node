@@ -6,7 +6,7 @@
     "stamp:version": "echo \"export const GIT_COMMIT_HASH = \\\"$(git rev-parse HEAD)$(git diff-index --quiet HEAD -- || echo '-dirty')\\\";\" > src/version.ts",
     "stamp:buildtime": "echo \"export const BUILD_TIME = \\\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\\\";\" >> src/version.ts",
     "stamp": "npm run stamp:version && npm run stamp:buildtime",
-    "build": "npm run stamp && npm run eslint && rm -rf dist/ && tsc && tsc-alias",
+    "build": "npm run stamp && npm run eslint && rm -rf dist/ && tsc",
     "eslint": "eslint -c eslint.config.ts src/"
   },
   "keywords": [],
@@ -21,7 +21,6 @@
     "eslint-plugin-prettier": "^5.5.6",
     "jiti": "^2.7.0",
     "prettier": "^3.9.6",
-    "tsc-alias": "^1.9.2",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.67.0"
   },
@@ -30,8 +29,8 @@
     "@inquirer/prompts": "^8.6.0",
     "commander": "^14.0.3",
     "dayjs": "^1.11.23",
-    "ip-address": "^10.5.0",
-    "undici": "^8.10.0",
+    "ip-address": "^10.7.3",
+    "undici": "^8.11.2",
     "winston": "^3.19.0",
     "zod": "^4.4.3"
   }
