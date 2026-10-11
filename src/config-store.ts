@@ -62,6 +62,13 @@ export class ConfigStore extends BaseSQLite {
         this.run(
             "create table if not exists wgkey (private, public, unique (public))"
         );
+        // keys are reported to the server only once. keys created before this column are reported once more.
+        const wgkeyColumns = this.query("pragma table_info(wgkey)");
+        if (!wgkeyColumns.some((column) => column.name === "reported")) {
+            this.run(
+                "alter table wgkey add column reported integer not null default 0"
+            );
+        }
     }
 
     getNodeSettings() {
@@ -119,6 +126,20 @@ export class ConfigStore extends BaseSQLite {
             .object({ private: z.string(), public: z.string() })
             .array()
             .parse(results);
+    }
+
+    getUnreportedWireGuardKeys() {
+        const results = this.query("select * from wgkey where reported=0");
+        return z
+            .object({ private: z.string(), public: z.string() })
+            .array()
+            .parse(results);
+    }
+
+    markWireGuardKeysReported(publicKeys: string[]) {
+        for (const publicKey of publicKeys) {
+            this.run("update wgkey set reported=1 where public=?", [publicKey]);
+        }
     }
 
     // Custom simple KV store with optional TTL

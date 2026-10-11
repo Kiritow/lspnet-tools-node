@@ -101,6 +101,11 @@ async function tryPatchMTU(namespace: string) {
     }
 }
 
+// cap of keys generated in one sync, in case the server asks for too many.
+const MAX_NEW_WIREGUARD_KEYS_PER_SYNC = 20;
+// number of keys kept when the server doesn't request keys.
+const LEGACY_WIREGUARD_KEY_COUNT = 20;
+
 async function generateNewWireGuardKeyPair() {
     const call1 = await checkedCallOutput(["wg", "genkey"]);
     const privateKey = call1.trim();
@@ -185,22 +190,44 @@ export class ControlAgent {
         this.pingRunnerMap = new Map();
     }
 
-    async doSyncWireGuardKeys(atLeast: number): Promise<void> {
-        const keys = this.store.getAllWireGuardKeys();
-        if (keys.length < atLeast) {
-            logger.info(
-                `${keys.length} WireGuard keys found, ${atLeast - keys.length} more needed, generating...`
+    // report keys not reported yet, then generate and report the keys requested by the server.
+    async doSyncWireGuardKeys(): Promise<void> {
+        // keys left unreported last time (e.g. request failed) are counted by the server before it answers.
+        let request = await this.doReportWireGuardKeys();
+        if (request === undefined) {
+            // server doesn't request keys, keep a fixed number of keys like before.
+            request = Math.max(
+                0,
+                LEGACY_WIREGUARD_KEY_COUNT -
+                    this.store.getAllWireGuardKeys().length
             );
-            for (let i = keys.length; i < atLeast; i++) {
-                const { privateKey, publicKey } =
-                    await generateNewWireGuardKeyPair();
-                this.store.createWireGuardKey(privateKey, publicKey);
-            }
-
-            return await this.doSyncWireGuardKeys(atLeast);
+        }
+        if (request < 1) {
+            return;
         }
 
-        await this.client.syncWireGuardKeys(keys.map((k) => k.public));
+        const count = Math.min(request, MAX_NEW_WIREGUARD_KEYS_PER_SYNC);
+        logger.info(
+            `${request} new WireGuard keys requested, generating ${count}...`
+        );
+        for (let i = 0; i < count; i++) {
+            const { privateKey, publicKey } =
+                await generateNewWireGuardKeyPair();
+            this.store.createWireGuardKey(privateKey, publicKey);
+        }
+
+        await this.doReportWireGuardKeys();
+    }
+
+    // returns the number of keys requested by the server, undefined if the server doesn't request keys.
+    async doReportWireGuardKeys() {
+        const publicKeys = this.store
+            .getUnreportedWireGuardKeys()
+            .map((k) => k.public);
+        const request = await this.client.syncWireGuardKeys(publicKeys);
+        // only after the server accepted them, otherwise they are reported again next time.
+        this.store.markWireGuardKeysReported(publicKeys);
+        return request;
     }
 
     async doSyncExitNode(
@@ -1084,7 +1111,7 @@ export class ControlAgent {
 
         // sync keys
         logger.info(`Sync keys...`);
-        await this.doSyncWireGuardKeys(20);
+        await this.doSyncWireGuardKeys();
 
         logger.info(`Sync node config...`);
         const remoteConfig = await this.client.getNodeConfig();

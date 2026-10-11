@@ -267,10 +267,12 @@ export class NodeManagerClient {
         });
     }
 
+    // returns the number of new keys requested by the server, undefined if the server doesn't request keys.
     async syncWireGuardKeys(publicKeys: string[]) {
-        await this.post("/api/v1/node/sync_wireguard_keys", {
+        const res = await this.post("/api/v1/node/sync_wireguard_keys", {
             keys: publicKeys,
         });
+        return z.object({ request: z.number().optional() }).parse(res).request;
     }
 
     async sendLinkTelemetry(
