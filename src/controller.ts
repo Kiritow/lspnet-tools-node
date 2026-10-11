@@ -707,7 +707,46 @@ export class ControlAgent {
         const localWGStates = await DumpAllWireGuardState(
             nodeSettings.namespace
         );
-        const markedLocalStates = new Set<string>();
+        // remove stale interfaces first, their listen ports might be reused by new peers.
+        const remoteIfnames = new Set(
+            remotePeers.map((p) => `${nodeSettings.namespace}-${p.id}`)
+        );
+        for (const ifname of localWGStates.keys()) {
+            if (remoteIfnames.has(ifname)) {
+                continue;
+            }
+
+            logger.info(`Removing stale WireGuard peer interface ${ifname}...`);
+            // remove underlay first, once the interface is gone it won't be seen as stale again.
+            const localUnderlayState = this.store.getLocalUnderlayState(ifname);
+            if (localUnderlayState !== undefined) {
+                await this.doSyncRemoveLocalUnderlay(
+                    ifname,
+                    localUnderlayState
+                );
+            }
+            await tryDestroyDevice(nodeSettings.namespace, ifname);
+
+            const rules = await GetAllIPTablesRules();
+            const filterRules = rules.get("filter");
+            if (filterRules !== undefined) {
+                for (const rule of filterRules) {
+                    if (
+                        rule.includes(`${nodeSettings.namespace}-INPUT`) &&
+                        rule.includes(`#peer_${ifname}#`)
+                    ) {
+                        logger.info(`Removing iptables rule: ${rule}`);
+                        const parts = SplitIPTablesRule(rule).slice(2);
+                        await tryDeleteIptablesRule(
+                            "filter",
+                            `${nodeSettings.namespace}-INPUT`,
+                            parts
+                        );
+                    }
+                }
+            }
+        }
+
         for (const peer of remotePeers) {
             const ifname = `${nodeSettings.namespace}-${peer.id}`;
             const localState = localWGStates.get(ifname);
@@ -753,7 +792,6 @@ export class ControlAgent {
                 continue;
             }
 
-            markedLocalStates.add(ifname);
             // compare local state and remote state
             logger.info(
                 `WireGuard peer interface ${ifname} exists, checking...`
@@ -774,42 +812,6 @@ export class ControlAgent {
                     ifname,
                     localState
                 );
-            }
-        }
-
-        for (const ifname of localWGStates.keys()) {
-            if (markedLocalStates.has(ifname)) {
-                continue;
-            }
-
-            logger.info(`Removing stale WireGuard peer interface ${ifname}...`);
-            // remove underlay first, once the interface is gone it won't be seen as stale again.
-            const localUnderlayState = this.store.getLocalUnderlayState(ifname);
-            if (localUnderlayState !== undefined) {
-                await this.doSyncRemoveLocalUnderlay(
-                    ifname,
-                    localUnderlayState
-                );
-            }
-            await tryDestroyDevice(nodeSettings.namespace, ifname);
-
-            const rules = await GetAllIPTablesRules();
-            const filterRules = rules.get("filter");
-            if (filterRules !== undefined) {
-                for (const rule of filterRules) {
-                    if (
-                        rule.includes(`${nodeSettings.namespace}-INPUT`) &&
-                        rule.includes(`#peer_${ifname}#`)
-                    ) {
-                        logger.info(`Removing iptables rule: ${rule}`);
-                        const parts = SplitIPTablesRule(rule).slice(2);
-                        await tryDeleteIptablesRule(
-                            "filter",
-                            `${nodeSettings.namespace}-INPUT`,
-                            parts
-                        );
-                    }
-                }
             }
         }
     }
