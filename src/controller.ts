@@ -696,6 +696,86 @@ export class ControlAgent {
         }
     }
 
+    async doSyncRemovePeer(nodeSettings: NodeSettings, ifname: string) {
+        // remove underlay first, once the interface is gone it won't be seen as stale again.
+        const localUnderlayState = this.store.getLocalUnderlayState(ifname);
+        if (localUnderlayState !== undefined) {
+            await this.doSyncRemoveLocalUnderlay(ifname, localUnderlayState);
+        }
+        await tryDestroyDevice(nodeSettings.namespace, ifname);
+
+        const rules = await GetAllIPTablesRules();
+        const filterRules = rules.get("filter");
+        if (filterRules !== undefined) {
+            for (const rule of filterRules) {
+                if (
+                    rule.includes(`${nodeSettings.namespace}-INPUT`) &&
+                    rule.includes(`#peer_${ifname}#`)
+                ) {
+                    logger.info(`Removing iptables rule: ${rule}`);
+                    const parts = SplitIPTablesRule(rule).slice(2);
+                    await tryDeleteIptablesRule(
+                        "filter",
+                        `${nodeSettings.namespace}-INPUT`,
+                        parts
+                    );
+                }
+            }
+        }
+    }
+
+    async doSyncCreatePeer(
+        nodeSettings: NodeSettings,
+        peer: RemotePeerInfo,
+        ifname: string,
+        privateKey: string
+    ) {
+        try {
+            await CreateWireGuardDevice(
+                nodeSettings.namespace,
+                ifname,
+                peer.addressCIDR,
+                withDefaultNumber(peer.mtu, 1420)
+            );
+            await UpdateWireGuardDevice(nodeSettings.namespace, ifname, {
+                private: privateKey,
+                listenPort: peer.listenPort,
+                peerPublic: peer.peerPublicKey,
+                endpoint: peer.endpoint,
+                keepalive: peer.keepalive,
+                allowedIPs: "0.0.0.0/0",
+            });
+            await LinkUpWireGuardDevice(nodeSettings.namespace, ifname);
+
+            if (peer.listenPort !== 0) {
+                logger.info(
+                    `WireGuard peer ${ifname} has listen port ${peer.listenPort}, adding iptables rule...`
+                );
+                await tryAppendIptablesRule(
+                    "filter",
+                    `${nodeSettings.namespace}-INPUT`,
+                    formatPeerInputRuleArgs(ifname, peer.listenPort)
+                );
+            }
+
+            if (peer.extra?.underlay !== undefined) {
+                await this.doSyncPeerUnderlay(nodeSettings, peer);
+            }
+        } catch (e) {
+            // a half-configured interface would be treated as existing next time and never be fixed, roll it back.
+            logger.warn(
+                `Failed to create WireGuard peer interface ${ifname}, rolling back...`
+            );
+            await this.doSyncRemovePeer(nodeSettings, ifname).catch((err) => {
+                console.error(err);
+                logger.error(
+                    `Failed to roll back WireGuard peer interface ${ifname}: ${err instanceof Error ? err.message : String(err)}`
+                );
+            });
+            throw e;
+        }
+    }
+
     async doSyncPeers(
         nodeSettings: NodeSettings,
         remotePeers: RemotePeerInfo[]
@@ -707,6 +787,7 @@ export class ControlAgent {
         const localWGStates = await DumpAllWireGuardState(
             nodeSettings.namespace
         );
+        // errors of a single peer are logged and retried next time, they should not block other peers.
         // remove stale interfaces first, their listen ports might be reused by new peers.
         const remoteIfnames = new Set(
             remotePeers.map((p) => `${nodeSettings.namespace}-${p.id}`)
@@ -717,33 +798,50 @@ export class ControlAgent {
             }
 
             logger.info(`Removing stale WireGuard peer interface ${ifname}...`);
-            // remove underlay first, once the interface is gone it won't be seen as stale again.
-            const localUnderlayState = this.store.getLocalUnderlayState(ifname);
-            if (localUnderlayState !== undefined) {
-                await this.doSyncRemoveLocalUnderlay(
-                    ifname,
-                    localUnderlayState
+            try {
+                await this.doSyncRemovePeer(nodeSettings, ifname);
+            } catch (e) {
+                console.error(e);
+                logger.error(
+                    `Failed to remove stale WireGuard peer interface ${ifname}: ${e instanceof Error ? e.message : String(e)}`
                 );
             }
-            await tryDestroyDevice(nodeSettings.namespace, ifname);
+        }
 
-            const rules = await GetAllIPTablesRules();
-            const filterRules = rules.get("filter");
-            if (filterRules !== undefined) {
-                for (const rule of filterRules) {
-                    if (
-                        rule.includes(`${nodeSettings.namespace}-INPUT`) &&
-                        rule.includes(`#peer_${ifname}#`)
-                    ) {
-                        logger.info(`Removing iptables rule: ${rule}`);
-                        const parts = SplitIPTablesRule(rule).slice(2);
-                        await tryDeleteIptablesRule(
-                            "filter",
-                            `${nodeSettings.namespace}-INPUT`,
-                            parts
-                        );
-                    }
-                }
+        // move interfaces off the listen ports wanted by other peers, so ports can be swapped between interfaces.
+        // they get their own listen ports later in doSyncPeerListenPort.
+        const listenPortOwners = new Map(
+            remotePeers
+                .filter((p) => p.listenPort !== 0)
+                .map((p) => [p.listenPort, `${nodeSettings.namespace}-${p.id}`])
+        );
+        for (const peer of remotePeers) {
+            const ifname = `${nodeSettings.namespace}-${peer.id}`;
+            const localState = localWGStates.get(ifname);
+            if (
+                localState === undefined ||
+                localState.listen === peer.listenPort
+            ) {
+                continue;
+            }
+
+            const owner = listenPortOwners.get(localState.listen);
+            if (owner === undefined || owner === ifname) {
+                continue;
+            }
+
+            logger.info(
+                `Listen port ${localState.listen} of interface ${ifname} is wanted by ${owner}, switching to a random port...`
+            );
+            try {
+                await UpdateWireGuardDevice(nodeSettings.namespace, ifname, {
+                    listenPort: 0,
+                });
+            } catch (e) {
+                console.error(e);
+                logger.error(
+                    `Failed to release listen port ${localState.listen} of interface ${ifname}: ${e instanceof Error ? e.message : String(e)}`
+                );
             }
         }
 
@@ -751,66 +849,50 @@ export class ControlAgent {
             const ifname = `${nodeSettings.namespace}-${peer.id}`;
             const localState = localWGStates.get(ifname);
 
-            if (localState === undefined) {
-                logger.info(`Creating WireGuard peer interface ${ifname}...`);
-                const privateKey = localWGKeyMap.get(peer.publicKey);
-                assert(
-                    privateKey !== undefined,
-                    `No local WireGuard key for public key ${peer.publicKey} used in peer ${peer.id}`
-                );
-                await CreateWireGuardDevice(
-                    nodeSettings.namespace,
-                    ifname,
-                    peer.addressCIDR,
-                    withDefaultNumber(peer.mtu, 1420)
-                );
-                await UpdateWireGuardDevice(nodeSettings.namespace, ifname, {
-                    private: privateKey,
-                    listenPort: peer.listenPort,
-                    peerPublic: peer.peerPublicKey,
-                    endpoint: peer.endpoint,
-                    keepalive: peer.keepalive,
-                    allowedIPs: "0.0.0.0/0",
-                });
-                await LinkUpWireGuardDevice(nodeSettings.namespace, ifname);
-
-                if (peer.listenPort !== 0) {
+            try {
+                if (localState === undefined) {
                     logger.info(
-                        `WireGuard peer ${ifname} has listen port ${peer.listenPort}, adding iptables rule...`
+                        `Creating WireGuard peer interface ${ifname}...`
                     );
-                    await tryAppendIptablesRule(
-                        "filter",
-                        `${nodeSettings.namespace}-INPUT`,
-                        formatPeerInputRuleArgs(ifname, peer.listenPort)
+                    const privateKey = localWGKeyMap.get(peer.publicKey);
+                    assert(
+                        privateKey !== undefined,
+                        `No local WireGuard key for public key ${peer.publicKey} used in peer ${peer.id}`
                     );
+                    await this.doSyncCreatePeer(
+                        nodeSettings,
+                        peer,
+                        ifname,
+                        privateKey
+                    );
+                    continue;
                 }
 
-                if (peer.extra?.underlay !== undefined) {
-                    await this.doSyncPeerUnderlay(nodeSettings, peer);
-                }
-
-                continue;
-            }
-
-            // compare local state and remote state
-            logger.info(
-                `WireGuard peer interface ${ifname} exists, checking...`
-            );
-            // before underlay: gost relay server follows the listen port
-            await this.doSyncPeerListenPort(
-                nodeSettings,
-                peer,
-                ifname,
-                localState
-            );
-            await this.doSyncPeerUnderlay(nodeSettings, peer);
-            if (peer.extra?.underlay === undefined) {
-                // no underlay, try syncing endpoints.
-                await this.doSyncPeerEndpoint(
+                // compare local state and remote state
+                logger.info(
+                    `WireGuard peer interface ${ifname} exists, checking...`
+                );
+                // before underlay: gost relay server follows the listen port
+                await this.doSyncPeerListenPort(
                     nodeSettings,
                     peer,
                     ifname,
                     localState
+                );
+                await this.doSyncPeerUnderlay(nodeSettings, peer);
+                if (peer.extra?.underlay === undefined) {
+                    // no underlay, try syncing endpoints.
+                    await this.doSyncPeerEndpoint(
+                        nodeSettings,
+                        peer,
+                        ifname,
+                        localState
+                    );
+                }
+            } catch (e) {
+                console.error(e);
+                logger.error(
+                    `Failed to sync WireGuard peer interface ${ifname}: ${e instanceof Error ? e.message : String(e)}`
                 );
             }
         }

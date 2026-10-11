@@ -58,7 +58,8 @@ export async function UpdateWireGuardDevice(
     }
 
     try {
-        if (options.listenPort) {
+        // 0 means a random port
+        if (options.listenPort !== undefined) {
             args.push("listen-port", `${options.listenPort}`);
         }
 
