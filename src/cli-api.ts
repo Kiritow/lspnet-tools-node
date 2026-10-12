@@ -3,7 +3,7 @@ import fs from "node:fs";
 import { input } from "@inquirer/prompts";
 import { ConfigStore } from "./config-store";
 import { CreateNewNodePrivateKey } from "./pki";
-import { JoinCluster } from "./nodemanager-client";
+import { JoinCluster, normalizeDomainPrefix } from "./nodemanager-client";
 
 export async function getOrInitNodeInteractive(databasePath: string) {
     let store: ConfigStore;
@@ -74,11 +74,12 @@ export async function getOrInitNodeInteractive(databasePath: string) {
         nodeSettings?.domainPrefix === undefined ||
         nodeSettings.domainPrefix.length < 1
     ) {
-        const domainPrefix = await input({
+        const domainPrefixInput = await input({
             message:
                 "Enter controller domain prefix (e.g., https://example.com):",
         });
-        assert(domainPrefix.length > 0, "Domain prefix cannot be empty");
+        assert(domainPrefixInput.length > 0, "Domain prefix cannot be empty");
+        const domainPrefix = normalizeDomainPrefix(domainPrefixInput);
         const token = await input({
             message: `Enter join-cluster token for ${domainPrefix}:`,
         });

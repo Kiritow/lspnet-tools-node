@@ -143,13 +143,24 @@ function getClientVersion() {
     return GIT_COMMIT_HASH.substring(0, 8);
 }
 
+// api paths are appended to the domain prefix directly, so it needs a scheme (default to https) and no trailing slash.
+export function normalizeDomainPrefix(domainPrefix: string) {
+    let prefix = domainPrefix.trim().replace(/\/+$/, "");
+    if (!prefix.startsWith("http://") && !prefix.startsWith("https://")) {
+        prefix = `https://${prefix}`;
+    }
+
+    return prefix;
+}
+
 export class NodeManagerClient {
-    private nodeSettings: NodeSettings;
+    private domainPrefix: string;
     private privateKey: PrivateKeyWrapper;
     private undiciAgent: UndiciAgent;
 
     constructor(nodeConfig: NodeSettings) {
-        this.nodeSettings = nodeConfig;
+        // databases initialized before the fix may keep the domain prefix as entered.
+        this.domainPrefix = normalizeDomainPrefix(nodeConfig.domainPrefix);
         this.privateKey = new PrivateKeyWrapper(nodeConfig.privateKey);
         this.undiciAgent = new UndiciAgent({
             allowH2: true,
@@ -169,19 +180,16 @@ export class NodeManagerClient {
             .sign(Buffer.from(signData))
             .toString("hex");
 
-        const res = await fetch(
-            `${this.nodeSettings.domainPrefix}${url}?${queryString}`,
-            {
-                method: "GET",
-                headers: {
-                    "X-Client-Id": this.privateKey.getKeyHash(),
-                    "X-Client-Nonce": nonce,
-                    "X-Client-Sign": signature,
-                    "X-Client-Version": getClientVersion(),
-                },
-                dispatcher: this.undiciAgent,
-            }
-        );
+        const res = await fetch(`${this.domainPrefix}${url}?${queryString}`, {
+            method: "GET",
+            headers: {
+                "X-Client-Id": this.privateKey.getKeyHash(),
+                "X-Client-Nonce": nonce,
+                "X-Client-Sign": signature,
+                "X-Client-Version": getClientVersion(),
+            },
+            dispatcher: this.undiciAgent,
+        });
 
         if (res.status !== 200) {
             const body = await res.text();
@@ -200,7 +208,7 @@ export class NodeManagerClient {
             .sign(Buffer.from(signData))
             .toString("hex");
 
-        const res = await fetch(`${this.nodeSettings.domainPrefix}${url}`, {
+        const res = await fetch(`${this.domainPrefix}${url}`, {
             method: "POST",
             headers: {
                 "X-Client-Id": this.privateKey.getKeyHash(),
@@ -301,13 +309,7 @@ export async function JoinCluster(
     nodeName?: string
 ) {
     const key = new PrivateKeyWrapper(privateKeyPEM);
-    let useDomainPrefix = domainPrefix;
-    if (
-        !useDomainPrefix.startsWith("http://") &&
-        !useDomainPrefix.startsWith("https://")
-    ) {
-        useDomainPrefix = `https://${useDomainPrefix}`;
-    }
+    const useDomainPrefix = normalizeDomainPrefix(domainPrefix);
     if (!useDomainPrefix.startsWith("https")) {
         console.warn("Warning: Joining cluster over non-HTTPS connection");
     }
