@@ -7,6 +7,7 @@ Wants=network-online.target
 Type=simple
 RestartSec=5s
 WorkingDirectory=__INSTALL_DIR__
+Environment=INSTALL_DIR=__INSTALL_DIR__
 ExecStart=__NODE_PATH__ --enable-source-maps dist/index.js run -d local/%i.db
 
 [Install]

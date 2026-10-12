@@ -1,3 +1,3 @@
 #!/bin/bash
 npm run build
-node --enable-source-maps $(pwd)/dist/index.js run -d "$@"
+INSTALL_DIR=$(pwd) node --enable-source-maps $(pwd)/dist/index.js run -d "$@"

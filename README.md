@@ -98,7 +98,7 @@ node dist/index.js init -d local/<实例名>.db
 
 - **Ethernet interface name**：宿主机的出口网卡名（如 `eth0`），用于出口节点 MASQUERADE 和 veth SNAT。
 - **namespace**：本节点使用的 netns 名，同时也是接口、iptables 链、容器的命名前缀。
-- **controller domain prefix**：控制面地址。请填写带协议头的完整地址，如 `https://lspnet.example.com`，末尾不要带 `/`。
+- **controller domain prefix**：控制面地址，如 `https://lspnet.example.com`。未写协议头时默认使用 `https://`，末尾的 `/` 会被去掉。
 - **join-cluster token**：在控制面获取的入网 token。
 
 初始化时会生成节点的 Ed25519 签名密钥，并向控制面注册，获得节点 ID。这些信息都保存在 SQLite 数据库中。对已存在的数据库再次执行 `init` 只会补全缺失的项。
@@ -126,7 +126,7 @@ journalctl -u network-tools@<实例名> -f
 
 | 变量 | 说明 |
 | --- | --- |
-| `INSTALL_DIR` | 安装目录，用于定位 `$INSTALL_DIR/bin/gost`。链路使用 gost underlay 时必须设置。 |
+| `INSTALL_DIR` | 安装目录，用于定位 `$INSTALL_DIR/bin/gost`。链路使用 gost underlay 时必须设置，systemd 服务和 `start.sh` 会自动设置。 |
 
 ## 数据库
 
